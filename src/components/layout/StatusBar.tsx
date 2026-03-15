@@ -25,9 +25,11 @@ function getShortcuts(focusZone: FocusZone, showQueryLog: boolean): Shortcut[] {
 
   const contextual: Record<FocusZone, Shortcut[]> = {
     sidebar: [
-      { key: "a", desc: "Add Connection" },
-      { key: "Enter", desc: "Expand" },
+      { key: "a", desc: "Add" },
+      { key: "Enter", desc: "Open/Expand" },
+      { key: "h/l", desc: "Collapse/Expand" },
       { key: "d", desc: "Disconnect" },
+      { key: "x", desc: "Remove" },
     ],
     main: [
       { key: "Enter", desc: "View Cell" },
