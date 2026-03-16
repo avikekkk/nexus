@@ -6,7 +6,12 @@ export function createMongoDriver(): DbDriver {
   let connected = false
 
   function buildUri(config: ConnectionConfig): string {
-    const auth = config.username ? `${encodeURIComponent(config.username)}:${encodeURIComponent(config.password ?? "")}@` : ""
+    if (config.url) {
+      return config.url
+    }
+    const auth = config.username
+      ? `${encodeURIComponent(config.username)}:${encodeURIComponent(config.password ?? "")}@`
+      : ""
     const tls = config.tls ? "?tls=true" : ""
     return `mongodb://${auth}${config.host}:${config.port}${tls}`
   }

@@ -125,7 +125,7 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
 
 export function TreeRow({ node, isSelected }: { node: FlatNode; isSelected: boolean }) {
   const indent = "  ".repeat(node.depth)
-  const bg = isSelected ? "#292e42" : "transparent"
+  const bg = isSelected ? "#283457" : "transparent"
   const fg = isSelected ? "#c0caf5" : "#a9b1d6"
 
   let icon: string

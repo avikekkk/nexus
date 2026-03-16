@@ -19,7 +19,7 @@ function getShortcuts(focusZone: FocusZone, showQueryLog: boolean): Shortcut[] {
   const base: Shortcut[] = [
     { key: "Tab", desc: "Switch Panel" },
     { key: "Ctrl+P", desc: "Commands" },
-    { key: "`", desc: showQueryLog ? "Hide Log" : "Show Log" },
+    { key: "`", desc: showQueryLog ? "Hide Console" : "Show Console" },
     { key: "Ctrl+Q", desc: "Quit" },
   ]
 
@@ -38,10 +38,10 @@ function getShortcuts(focusZone: FocusZone, showQueryLog: boolean): Shortcut[] {
     ],
     detail: [
       { key: "Esc", desc: "Close" },
-      { key: "c", desc: "Copy" },
+      { key: "Select", desc: "Copy" },
     ],
     querylog: [
-      { key: "c", desc: "Copy Query" },
+      { key: "Select", desc: "Copy" },
       { key: "Enter", desc: "Re-run" },
     ],
   }

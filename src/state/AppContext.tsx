@@ -1,8 +1,9 @@
-import { createContext, useContext, useReducer, useEffect, useCallback, type ReactNode } from "react"
+import { createContext, useContext, useReducer, useEffect, useCallback, useRef, type ReactNode } from "react"
 import type { ConnectionConfig, ConnectionState, ConnectionStatus, DbDriver } from "../db/types.ts"
 import { createDriver } from "../db/registry.ts"
 import { loadConnections, saveConnections, generateId } from "./connections.ts"
 import { nodeId, type TreeNode } from "./tree.ts"
+import type { ConsoleEntry, LogLevel, LogSource } from "./console.ts"
 
 export interface Tab {
   id: string
@@ -21,6 +22,7 @@ interface AppState {
   treeChildren: Map<string, TreeNode[]>
   tabs: Tab[]
   activeTabId: string | null
+  consoleEntries: ConsoleEntry[]
 }
 
 type AppAction =
@@ -37,6 +39,7 @@ type AppAction =
   | { type: "OPEN_TAB"; tab: Tab }
   | { type: "CLOSE_TAB"; tabId: string }
   | { type: "SET_ACTIVE_TAB"; tabId: string }
+  | { type: "CONSOLE_LOG"; entry: ConsoleEntry }
 
 interface AppContextValue {
   state: AppState
@@ -49,6 +52,7 @@ interface AppContextValue {
   toggleExpand: (nid: string, connectionId: string, database?: string) => void
   selectNode: (nid: string | null) => void
   openCollection: (connectionId: string, database: string, collection: string) => void
+  log: (level: LogLevel, source: LogSource, message: string) => void
 }
 
 function cloneSet<T>(s: Set<T>): Set<T> {
@@ -58,6 +62,8 @@ function cloneSet<T>(s: Set<T>): Set<T> {
 function cloneMap<K, V>(m: Map<K, V>): Map<K, V> {
   return new Map(m)
 }
+
+const MAX_CONSOLE_ENTRIES = 200
 
 function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -146,12 +152,25 @@ function reducer(state: AppState, action: AppAction): AppState {
     }
     case "SET_ACTIVE_TAB":
       return { ...state, activeTabId: action.tabId }
+    case "CONSOLE_LOG": {
+      const entries = [...state.consoleEntries, action.entry]
+      if (entries.length > MAX_CONSOLE_ENTRIES) {
+        entries.splice(0, entries.length - MAX_CONSOLE_ENTRIES)
+      }
+      return { ...state, consoleEntries: entries }
+    }
   }
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
 
 const driverMap = new Map<string, DbDriver>()
+
+export async function disconnectAllDrivers() {
+  const promises = [...driverMap.values()].map((driver) => driver.disconnect().catch(() => {}))
+  await Promise.all(promises)
+  driverMap.clear()
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, {
@@ -163,6 +182,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     treeChildren: new Map<string, TreeNode[]>(),
     tabs: [],
     activeTabId: null,
+    consoleEntries: [],
   })
 
   useEffect(() => {
@@ -179,10 +199,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.connections])
 
+  const entryIdRef = useRef(0)
+  const log = useCallback((level: LogLevel, source: LogSource, message: string) => {
+    const entry: ConsoleEntry = {
+      id: ++entryIdRef.current,
+      timestamp: new Date(),
+      level,
+      source,
+      message,
+    }
+    dispatch({ type: "CONSOLE_LOG", entry })
+  }, [])
+
   const connectTo = async (id: string) => {
     const conn = state.connections.find((c) => c.config.id === id)
     if (!conn) return
 
+    const label = `${conn.config.name} (${conn.config.type}://${conn.config.host}:${conn.config.port})`
+    log("info", "connection", `Connecting to ${label}...`)
     dispatch({ type: "SET_STATUS", id, status: "connecting" })
     try {
       const driver = createDriver(conn.config.type)
@@ -190,13 +224,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       driverMap.set(id, driver)
       dispatch({ type: "SET_STATUS", id, status: "connected" })
       dispatch({ type: "SET_ACTIVE", id })
+      log("success", "connection", `Connected to ${label}`)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       dispatch({ type: "SET_STATUS", id, status: "error", error: msg })
+      log("error", "connection", `Failed to connect to ${label}: ${msg}`)
     }
   }
 
   const disconnectFrom = async (id: string) => {
+    const conn = state.connections.find((c) => c.config.id === id)
+    const label = conn ? conn.config.name : id
     const driver = driverMap.get(id)
     if (driver) {
       try {
@@ -211,14 +249,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (state.activeConnectionId === id) {
       dispatch({ type: "SET_ACTIVE", id: null })
     }
+    log("info", "connection", `Disconnected from ${label}`)
   }
 
   const addConnection = (config: Omit<ConnectionConfig, "id">) => {
     const full: ConnectionConfig = { ...config, id: generateId() }
     dispatch({ type: "ADD_CONNECTION", config: full })
+    log("info", "system", `Added connection "${config.name}"`)
   }
 
   const removeConnection = (id: string) => {
+    const conn = state.connections.find((c) => c.config.id === id)
+    const label = conn ? conn.config.name : id
     const driver = driverMap.get(id)
     if (driver) {
       driver.disconnect().catch(() => {})
@@ -226,6 +268,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     dispatch({ type: "TREE_CLEAR_CONNECTION", connectionId: id })
     dispatch({ type: "REMOVE_CONNECTION", id })
+    log("info", "system", `Removed connection "${label}"`)
   }
 
   const getDriver = (id: string) => driverMap.get(id)
@@ -255,9 +298,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 database: db,
               }))
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: nodes })
+              log("info", "query", `Listed ${dbs.length} databases`)
             })
-            .catch(() => {
+            .catch((e) => {
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: [] })
+              const msg = e instanceof Error ? e.message : String(e)
+              log("error", "query", `Failed to list databases: ${msg}`)
             })
             .finally(() => {
               dispatch({ type: "TREE_SET_LOADING", nodeId: nid, loading: false })
@@ -277,9 +323,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 count: col.count,
               }))
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: nodes })
+              log("info", "query", `Listed ${cols.length} collections in ${database}`)
             })
-            .catch(() => {
+            .catch((e) => {
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: [] })
+              const msg = e instanceof Error ? e.message : String(e)
+              log("error", "query", `Failed to list collections in ${database}: ${msg}`)
             })
             .finally(() => {
               dispatch({ type: "TREE_SET_LOADING", nodeId: nid, loading: false })
@@ -287,7 +336,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [state.treeExpanded, state.treeChildren]
+    [state.treeExpanded, state.treeChildren, log]
   )
 
   const selectNode = useCallback((nid: string | null) => {
@@ -322,6 +371,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toggleExpand,
         selectNode,
         openCollection,
+        log,
       }}
     >
       {children}

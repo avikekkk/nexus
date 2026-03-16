@@ -10,6 +10,7 @@ export interface ConnectionConfig {
   password?: string
   database?: string
   tls?: boolean
+  url?: string
 }
 
 export interface CollectionInfo {

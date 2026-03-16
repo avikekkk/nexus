@@ -1,14 +1,15 @@
 import { useState, useEffect, useMemo } from "react"
 import { useKeyboard } from "@opentui/react"
 import { useApp } from "../../state/AppContext.tsx"
-import { ConnectionForm } from "../sidebar/ConnectionForm.tsx"
 import { flattenTreeNodes, TreeRow, type FlatNode } from "../sidebar/TreeBrowser.tsx"
 import { nodeId } from "../../state/tree.ts"
-import type { ConnectionConfig, ConnectionStatus } from "../../db/types.ts"
+import type { ConnectionStatus } from "../../db/types.ts"
 
 interface SidebarProps {
   width: number
   focused: boolean
+  showConnectionForm: boolean
+  onShowConnectionForm: () => void
 }
 
 const STATUS_ICONS: Record<ConnectionStatus, string> = {
@@ -29,9 +30,8 @@ type RowItem =
   | { kind: "connection"; index: number; connectionId: string }
   | { kind: "tree"; node: FlatNode }
 
-export function Sidebar({ width, focused }: SidebarProps) {
+export function Sidebar({ width, focused, showConnectionForm, onShowConnectionForm }: SidebarProps) {
   const { state, connectTo, disconnectFrom, addConnection, removeConnection, toggleExpand, openCollection } = useApp()
-  const [showForm, setShowForm] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const borderColor = focused ? "#7aa2f7" : "#414868"
 
@@ -77,10 +77,10 @@ export function Sidebar({ width, focused }: SidebarProps) {
 
   useKeyboard((key) => {
     if (!focused) return
-    if (showForm) return
+    if (showConnectionForm) return
 
     if (key.name === "a") {
-      setShowForm(true)
+      onShowConnectionForm()
       return
     }
 
@@ -98,7 +98,7 @@ export function Sidebar({ width, focused }: SidebarProps) {
     const row = rows[selectedIndex]
     if (!row) return
 
-    if (key.name === "enter") {
+    if (key.name === "return") {
       if (row.kind === "connection") {
         const conn = state.connections[row.index]
         if (!conn) return
@@ -171,11 +171,6 @@ export function Sidebar({ width, focused }: SidebarProps) {
     }
   })
 
-  const handleFormSubmit = (config: Omit<ConnectionConfig, "id">) => {
-    addConnection(config)
-    setShowForm(false)
-  }
-
   return (
     <box
       width={width}
@@ -202,7 +197,7 @@ export function Sidebar({ width, focused }: SidebarProps) {
               const conn = state.connections[row.index]!
               const icon = STATUS_ICONS[conn.status]
               const iconColor = STATUS_COLORS[conn.status]
-              const bg = isSelected ? "#292e42" : "transparent"
+              const bg = isSelected ? "#283457" : "transparent"
               const fg = isSelected ? "#c0caf5" : "#a9b1d6"
 
               return (
@@ -234,7 +229,5 @@ export function Sidebar({ width, focused }: SidebarProps) {
         </text>
       </box>
 
-      {showForm && <ConnectionForm onSubmit={handleFormSubmit} onCancel={() => setShowForm(false)} />}
-    </box>
-  )
+    </box>  )
 }

@@ -1,9 +1,13 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useKeyboard } from "@opentui/react"
 import type { ConnectionConfig, DbType } from "../../db/types.ts"
 import { DEFAULT_PORTS } from "../../db/types.ts"
+import { parseConnectionUrl } from "../../db/url.ts"
+import { debug } from "../../utils/debug.ts"
 
 interface ConnectionFormProps {
+  left?: number
+  top?: number
   onSubmit: (config: Omit<ConnectionConfig, "id">) => void
   onCancel: () => void
 }
@@ -14,18 +18,46 @@ const DB_TYPES: { name: string; value: DbType }[] = [
   { name: "Redis", value: "redis" },
 ]
 
-const FIELD_COUNT = 7
+const FIELD_COUNT = 8
 
-export function ConnectionForm({ onSubmit, onCancel }: ConnectionFormProps) {
+export function ConnectionForm({ left, top, onSubmit, onCancel }: ConnectionFormProps) {
   const [name, setName] = useState("")
   const [dbType, setDbType] = useState<DbType>("mongo")
+  const [url, setUrl] = useState("")
   const [host, setHost] = useState("localhost")
   const [port, setPort] = useState(String(DEFAULT_PORTS.mongo))
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [focusIndex, setFocusIndex] = useState(0)
+  const [urlError, setUrlError] = useState("")
+
+  const hasUrl = url.trim().length > 0
+
+  // Validate and apply URL overrides whenever url or dbType changes
+  useEffect(() => {
+    if (!hasUrl) {
+      setUrlError("")
+      return
+    }
+    const result = parseConnectionUrl(url, dbType)
+    if (!result.valid) {
+      setUrlError(result.error ?? "Invalid URL")
+      return
+    }
+    setUrlError("")
+    const p = result.parsed!
+    setHost(p.host)
+    setPort(String(p.port))
+    setUsername(p.username ?? "")
+    setPassword(p.password ?? "")
+  }, [url, dbType])
+
+  // Fields disabled when URL is provided (host, port, username, password)
+  const disabledFields = hasUrl ? new Set([3, 4, 5, 6]) : new Set<number>()
 
   useKeyboard((key) => {
+    debug(`[ConnectionForm] key pressed: name="${key.name}", focusIndex=${focusIndex}, hasUrl=${hasUrl}, urlError="${urlError}"`)
+
     if (key.name === "escape") {
       onCancel()
       return
@@ -33,22 +65,37 @@ export function ConnectionForm({ onSubmit, onCancel }: ConnectionFormProps) {
 
     if (key.name === "tab") {
       setFocusIndex((i) => {
-        const next = key.shift ? (i - 1 + FIELD_COUNT) % FIELD_COUNT : (i + 1) % FIELD_COUNT
+        const dir = key.shift ? -1 : 1
+        let next = (i + dir + FIELD_COUNT) % FIELD_COUNT
+        while (disabledFields.has(next)) {
+          next = (next + dir + FIELD_COUNT) % FIELD_COUNT
+        }
+        debug(`[ConnectionForm] tab: focusIndex ${i} -> ${next} (shift=${key.shift})`)
         return next
       })
       return
     }
 
-    if (key.name === "enter" && focusIndex === 6) {
-      onSubmit({
-        name: name || `${dbType} connection`,
-        type: dbType,
-        host,
-        port: parseInt(port, 10) || DEFAULT_PORTS[dbType],
-        username: username || undefined,
-        password: password || undefined,
-      })
-      return
+    if (key.name === "return") {
+      debug(`[ConnectionForm] enter pressed: focusIndex=${focusIndex}, expected=7, match=${focusIndex === 7}`)
+      if (focusIndex === 7) {
+        if (hasUrl && urlError) {
+          debug(`[ConnectionForm] blocked: URL has error: "${urlError}"`)
+          return
+        }
+        const config = {
+          name: name || `${dbType} connection`,
+          type: dbType,
+          host,
+          port: parseInt(port, 10) || DEFAULT_PORTS[dbType],
+          username: username || undefined,
+          password: password || undefined,
+          url: hasUrl ? url.trim() : undefined,
+        }
+        debug(`[ConnectionForm] calling onSubmit with:`, JSON.stringify(config))
+        onSubmit(config)
+        return
+      }
     }
 
     if (focusIndex === 1) {
@@ -58,7 +105,9 @@ export function ConnectionForm({ onSubmit, onCancel }: ConnectionFormProps) {
         const nextIdx = (currentIdx + dir + DB_TYPES.length) % DB_TYPES.length
         const next = DB_TYPES[nextIdx]!
         setDbType(next.value)
-        setPort(String(DEFAULT_PORTS[next.value]))
+        if (!hasUrl) {
+          setPort(String(DEFAULT_PORTS[next.value]))
+        }
       }
     }
   })
@@ -67,14 +116,15 @@ export function ConnectionForm({ onSubmit, onCancel }: ConnectionFormProps) {
   const inputWidth = 32
   const labelFg = "#565f89"
   const activeLabelFg = "#7aa2f7"
+  const disabledFg = "#414868"
 
   return (
     <box
       position="absolute"
-      left={2}
-      top={1}
+      left={left ?? 2}
+      top={top ?? 1}
       width={52}
-      height={16}
+      height={19}
       flexDirection="column"
       border
       borderStyle="rounded"
@@ -82,7 +132,7 @@ export function ConnectionForm({ onSubmit, onCancel }: ConnectionFormProps) {
       backgroundColor="#1a1b26"
       title=" New Connection "
       titleAlignment="center"
-      zIndex={10}
+      zIndex={100}
     >
       <box flexDirection="column" padding={1} gap={0}>
         {/* Name */}
@@ -121,15 +171,15 @@ export function ConnectionForm({ onSubmit, onCancel }: ConnectionFormProps) {
           </box>
         </box>
 
-        {/* Host */}
+        {/* URL */}
         <box flexDirection="row" gap={1}>
           <text width={labelWidth} fg={focusIndex === 2 ? activeLabelFg : labelFg}>
-            Host
+            URL
           </text>
           <input
-            value={host}
-            onChange={setHost}
-            placeholder="localhost"
+            value={url}
+            onChange={setUrl}
+            placeholder="mongodb://user:pass@host:port/db"
             focused={focusIndex === 2}
             width={inputWidth}
             backgroundColor="#16161e"
@@ -138,54 +188,81 @@ export function ConnectionForm({ onSubmit, onCancel }: ConnectionFormProps) {
           />
         </box>
 
+        {/* URL error */}
+        {hasUrl && urlError ? (
+          <box flexDirection="row" gap={1}>
+            <text width={labelWidth}>{" "}</text>
+            <text fg="#f7768e" width={inputWidth}>
+              {urlError}
+            </text>
+          </box>
+        ) : null}
+
+        {/* Host */}
+        <box flexDirection="row" gap={1}>
+          <text width={labelWidth} fg={hasUrl ? disabledFg : focusIndex === 3 ? activeLabelFg : labelFg}>
+            Host
+          </text>
+          <input
+            value={host}
+            onChange={hasUrl ? () => {} : setHost}
+            placeholder="localhost"
+            focused={!hasUrl && focusIndex === 3}
+            width={inputWidth}
+            backgroundColor="#16161e"
+            focusedBackgroundColor={hasUrl ? "#16161e" : "#292e42"}
+            textColor={hasUrl ? disabledFg : "#c0caf5"}
+          />
+        </box>
+
         {/* Port */}
         <box flexDirection="row" gap={1}>
-          <text width={labelWidth} fg={focusIndex === 3 ? activeLabelFg : labelFg}>
+          <text width={labelWidth} fg={hasUrl ? disabledFg : focusIndex === 4 ? activeLabelFg : labelFg}>
             Port
           </text>
           <input
             value={port}
-            onChange={setPort}
+            onChange={hasUrl ? () => {} : setPort}
             placeholder={String(DEFAULT_PORTS[dbType])}
-            focused={focusIndex === 3}
+            focused={!hasUrl && focusIndex === 4}
             width={inputWidth}
             backgroundColor="#16161e"
-            focusedBackgroundColor="#292e42"
-            textColor="#c0caf5"
+            focusedBackgroundColor={hasUrl ? "#16161e" : "#292e42"}
+            textColor={hasUrl ? disabledFg : "#c0caf5"}
           />
         </box>
 
         {/* Username */}
         <box flexDirection="row" gap={1}>
-          <text width={labelWidth} fg={focusIndex === 4 ? activeLabelFg : labelFg}>
+          <text width={labelWidth} fg={hasUrl ? disabledFg : focusIndex === 5 ? activeLabelFg : labelFg}>
             Username
           </text>
           <input
             value={username}
-            onChange={setUsername}
+            onChange={hasUrl ? () => {} : setUsername}
             placeholder="optional"
-            focused={focusIndex === 4}
+            focused={!hasUrl && focusIndex === 5}
             width={inputWidth}
             backgroundColor="#16161e"
-            focusedBackgroundColor="#292e42"
-            textColor="#c0caf5"
+            focusedBackgroundColor={hasUrl ? "#16161e" : "#292e42"}
+            textColor={hasUrl ? disabledFg : "#c0caf5"}
           />
         </box>
 
         {/* Password */}
         <box flexDirection="row" gap={1}>
-          <text width={labelWidth} fg={focusIndex === 5 ? activeLabelFg : labelFg}>
+          <text width={labelWidth} fg={hasUrl ? disabledFg : focusIndex === 6 ? activeLabelFg : labelFg}>
             Password
           </text>
           <input
             value={password}
-            onChange={setPassword}
+            onChange={hasUrl ? () => {} : setPassword}
             placeholder="optional"
-            focused={focusIndex === 5}
+            focused={!hasUrl && focusIndex === 6}
             width={inputWidth}
             backgroundColor="#16161e"
-            focusedBackgroundColor="#292e42"
-            textColor="#c0caf5"
+            focusedBackgroundColor={hasUrl ? "#16161e" : "#292e42"}
+            textColor={hasUrl ? disabledFg : "#c0caf5"}
           />
         </box>
 
@@ -194,10 +271,10 @@ export function ConnectionForm({ onSubmit, onCancel }: ConnectionFormProps) {
           <text width={labelWidth}>{" "}</text>
           <box
             width={inputWidth}
-            backgroundColor={focusIndex === 6 ? "#7aa2f7" : "#292e42"}
+            backgroundColor={focusIndex === 7 ? "#7aa2f7" : "#292e42"}
             justifyContent="center"
           >
-            <text fg={focusIndex === 6 ? "#1a1b26" : "#a9b1d6"}> Save Connection </text>
+            <text fg={focusIndex === 7 ? "#1a1b26" : "#a9b1d6"}> Save Connection </text>
           </box>
         </box>
       </box>
