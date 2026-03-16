@@ -8,6 +8,7 @@ import { debug } from "./utils/debug.ts"
 import { Console } from "./components/layout/QueryLog.tsx"
 import { StatusBar } from "./components/layout/StatusBar.tsx"
 import { ConnectionForm } from "./components/sidebar/ConnectionForm.tsx"
+import { DatabasePicker } from "./components/sidebar/DatabasePicker.tsx"
 import { useApp } from "./state/AppContext.tsx"
 import { Toast } from "./components/layout/Toast.tsx"
 
@@ -18,11 +19,12 @@ const ZONES: FocusZone[] = ["sidebar", "main", "detail", "querylog"]
 export function App() {
   const renderer = useRenderer()
   const { width, height } = useTerminalDimensions()
-  const { addConnection } = useApp()
+  const { state, addConnection } = useApp()
   const [focusZone, setFocusZone] = useState<FocusZone>("sidebar")
   const [showQueryLog, setShowQueryLog] = useState(true)
   const [showDetail, setShowDetail] = useState(false)
   const [showConnectionForm, setShowConnectionForm] = useState(false)
+  const [databasePickerConnectionId, setDatabasePickerConnectionId] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
   const isNarrow = width < 100
@@ -58,7 +60,7 @@ export function App() {
     }
 
     // Block all other keys when modal is open
-    if (showConnectionForm) return
+    if (showConnectionForm || databasePickerConnectionId) return
 
     if (key.name === "`") {
       setShowQueryLog((v) => !v)
@@ -104,10 +106,13 @@ export function App() {
           width={sidebarWidth}
           focused={focusZone === "sidebar"}
           showConnectionForm={showConnectionForm}
+          showDatabasePicker={!!databasePickerConnectionId}
           onShowConnectionForm={() => setShowConnectionForm(true)}
+          onShowDatabasePicker={(connectionId) => setDatabasePickerConnectionId(connectionId)}
+          onFocusMain={() => setFocusZone("main")}
         />
 
-        <MainPanel focused={focusZone === "main"} />
+        <MainPanel focused={focusZone === "main"} sidebarWidth={sidebarWidth} />
 
         {showDetail && <DetailPanel width={detailWidth} focused={focusZone === "detail"} />}
       </box>
@@ -117,6 +122,9 @@ export function App() {
 
       {/* Status bar */}
       <StatusBar focusZone={focusZone} showQueryLog={showQueryLog} showDetail={showDetail} />
+
+      {/* Bottom margin */}
+      <box height={1} />
 
       {/* Toast notification */}
       {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
@@ -149,6 +157,38 @@ export function App() {
           />
         </>
       )}
+
+      {/* Modal overlay + database picker */}
+      {databasePickerConnectionId && (() => {
+        const conn = state.connections.find((c) => c.config.id === databasePickerConnectionId)
+        if (!conn) return null
+        const pickerWidth = 44
+        const pickerAllDbs = state.allDatabases.get(databasePickerConnectionId) ?? []
+        const pickerHeight = Math.min(pickerAllDbs.length + 6, 20)
+        const pickerLeft = Math.max(0, Math.floor((width - pickerWidth) / 2))
+        const pickerTop = Math.max(0, Math.floor((height - pickerHeight) / 2))
+        return (
+          <>
+            <box
+              position="absolute"
+              left={0}
+              top={0}
+              width="100%"
+              height="100%"
+              backgroundColor="#000000"
+              opacity={0.6}
+              zIndex={50}
+            />
+            <DatabasePicker
+              connectionId={databasePickerConnectionId}
+              connectionName={conn.config.name}
+              left={pickerLeft}
+              top={pickerTop}
+              onClose={() => setDatabasePickerConnectionId(null)}
+            />
+          </>
+        )
+      })()}
     </box>
   )
 }

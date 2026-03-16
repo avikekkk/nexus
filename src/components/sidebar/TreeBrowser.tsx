@@ -123,7 +123,21 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
   return flat
 }
 
-export function TreeRow({ node, isSelected }: { node: FlatNode; isSelected: boolean }) {
+function truncate(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text
+  if (maxLen <= 1) return "…"
+  return text.slice(0, maxLen - 1) + "…"
+}
+
+export function TreeRow({
+  node,
+  isSelected,
+  maxWidth,
+}: {
+  node: FlatNode
+  isSelected: boolean
+  maxWidth?: number
+}) {
   const indent = "  ".repeat(node.depth)
   const bg = isSelected ? "#283457" : "transparent"
   const fg = isSelected ? "#c0caf5" : "#a9b1d6"
@@ -140,11 +154,18 @@ export function TreeRow({ node, isSelected }: { node: FlatNode; isSelected: bool
   const typeIcon = node.type === "database" ? "📁" : "📄"
   const countStr = formatCount(node.count)
 
+  // Calculate available width for the label
+  // Layout: [paddingX=1] indent icon " " typeIcon " " label countStr [paddingX=1]
+  // paddingX=1 on each side = 2 chars, indent = 2*depth, icon = 1, spaces + typeIcon = 4
+  const overhead = 2 + indent.length + 1 + 1 + 2 + 1 + countStr.length
+  const availableForLabel = maxWidth ? Math.max(3, maxWidth - overhead) : node.label.length
+  const label = truncate(node.label, availableForLabel)
+
   return (
     <box flexDirection="row" paddingX={1} backgroundColor={bg}>
       <text fg={fg}>
         {indent}
-        <span fg="#565f89">{icon}</span> {typeIcon} {node.label}
+        <span fg="#565f89">{icon}</span> {typeIcon} {label}
         {countStr && <span fg="#414868">{countStr}</span>}
       </text>
     </box>

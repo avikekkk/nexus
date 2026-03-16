@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useEffect, useCallback, useRef, type ReactNode } from "react"
-import type { ConnectionConfig, ConnectionState, ConnectionStatus, DbDriver } from "../db/types.ts"
+import type { ConnectionConfig, ConnectionState, ConnectionStatus, DbDriver, QueryResult } from "../db/types.ts"
 import { createDriver } from "../db/registry.ts"
 import { loadConnections, saveConnections, generateId } from "./connections.ts"
 import { nodeId, type TreeNode } from "./tree.ts"
@@ -13,6 +13,14 @@ export interface Tab {
   collection: string
 }
 
+export interface TabData {
+  result: QueryResult | null
+  loading: boolean
+  error: string | null
+  pageSize: number
+  currentOffset: number
+}
+
 interface AppState {
   connections: ConnectionState[]
   activeConnectionId: string | null
@@ -22,8 +30,13 @@ interface AppState {
   treeChildren: Map<string, TreeNode[]>
   tabs: Tab[]
   activeTabId: string | null
+  tabData: Map<string, TabData>
   consoleEntries: ConsoleEntry[]
+  allDatabases: Map<string, string[]>
+  visibleDatabases: Map<string, string[]>
 }
+
+const MAX_VISIBLE_DATABASES = 10
 
 type AppAction =
   | { type: "SET_CONNECTIONS"; configs: ConnectionConfig[] }
@@ -39,7 +52,14 @@ type AppAction =
   | { type: "OPEN_TAB"; tab: Tab }
   | { type: "CLOSE_TAB"; tabId: string }
   | { type: "SET_ACTIVE_TAB"; tabId: string }
+  | { type: "CLOSE_OTHER_TABS"; tabId: string }
+  | { type: "CLOSE_ALL_TABS" }
+  | { type: "NEXT_TAB" }
+  | { type: "PREV_TAB" }
+  | { type: "SET_TAB_DATA"; tabId: string; data: Partial<TabData> }
   | { type: "CONSOLE_LOG"; entry: ConsoleEntry }
+  | { type: "SET_ALL_DATABASES"; connectionId: string; databases: string[] }
+  | { type: "SET_VISIBLE_DATABASES"; connectionId: string; databases: string[] }
 
 interface AppContextValue {
   state: AppState
@@ -52,6 +72,13 @@ interface AppContextValue {
   toggleExpand: (nid: string, connectionId: string, database?: string) => void
   selectNode: (nid: string | null) => void
   openCollection: (connectionId: string, database: string, collection: string) => void
+  closeTab: (tabId: string) => void
+  closeOtherTabs: (tabId: string) => void
+  closeAllTabs: () => void
+  nextTab: () => void
+  prevTab: () => void
+  fetchTabData: (tabId: string, offset?: number, pageSize?: number) => void
+  setVisibleDatabases: (connectionId: string, databases: string[]) => void
   log: (level: LogLevel, source: LogSource, message: string) => void
 }
 
@@ -146,12 +173,70 @@ function reducer(state: AppState, action: AppAction): AppState {
     }
     case "CLOSE_TAB": {
       const tabs = state.tabs.filter((t) => t.id !== action.tabId)
-      const activeTabId =
-        state.activeTabId === action.tabId ? (tabs.length > 0 ? tabs[tabs.length - 1]!.id : null) : state.activeTabId
-      return { ...state, tabs, activeTabId }
+      const tabData = cloneMap(state.tabData)
+      tabData.delete(action.tabId)
+      let activeTabId = state.activeTabId
+      if (state.activeTabId === action.tabId) {
+        // Find next best tab: prefer the tab to the right, then left, then null
+        const oldIndex = state.tabs.findIndex((t) => t.id === action.tabId)
+        if (tabs.length === 0) {
+          activeTabId = null
+        } else if (oldIndex < tabs.length) {
+          activeTabId = tabs[oldIndex]!.id
+        } else {
+          activeTabId = tabs[tabs.length - 1]!.id
+        }
+      }
+      return { ...state, tabs, activeTabId, tabData }
     }
     case "SET_ACTIVE_TAB":
       return { ...state, activeTabId: action.tabId }
+    case "CLOSE_OTHER_TABS": {
+      const kept = state.tabs.filter((t) => t.id === action.tabId)
+      const tabData = new Map<string, TabData>()
+      const existing = state.tabData.get(action.tabId)
+      if (existing) tabData.set(action.tabId, existing)
+      return { ...state, tabs: kept, activeTabId: action.tabId, tabData }
+    }
+    case "CLOSE_ALL_TABS":
+      return { ...state, tabs: [], activeTabId: null, tabData: new Map() }
+    case "NEXT_TAB": {
+      if (state.tabs.length <= 1) return state
+      const idx = state.tabs.findIndex((t) => t.id === state.activeTabId)
+      const nextIdx = (idx + 1) % state.tabs.length
+      return { ...state, activeTabId: state.tabs[nextIdx]!.id }
+    }
+    case "PREV_TAB": {
+      if (state.tabs.length <= 1) return state
+      const idx = state.tabs.findIndex((t) => t.id === state.activeTabId)
+      const prevIdx = (idx - 1 + state.tabs.length) % state.tabs.length
+      return { ...state, activeTabId: state.tabs[prevIdx]!.id }
+    }
+    case "SET_TAB_DATA": {
+      const tabData = cloneMap(state.tabData)
+      const existing = tabData.get(action.tabId) ?? {
+        result: null,
+        loading: false,
+        error: null,
+        pageSize: 20,
+        currentOffset: 0,
+      }
+      tabData.set(action.tabId, { ...existing, ...action.data })
+      return { ...state, tabData }
+    }
+    case "SET_ALL_DATABASES": {
+      const allDatabases = cloneMap(state.allDatabases)
+      allDatabases.set(action.connectionId, action.databases)
+      // Also set visible databases (first N)
+      const visibleDatabases = cloneMap(state.visibleDatabases)
+      visibleDatabases.set(action.connectionId, action.databases.slice(0, MAX_VISIBLE_DATABASES))
+      return { ...state, allDatabases, visibleDatabases }
+    }
+    case "SET_VISIBLE_DATABASES": {
+      const visibleDatabases = cloneMap(state.visibleDatabases)
+      visibleDatabases.set(action.connectionId, action.databases)
+      return { ...state, visibleDatabases }
+    }
     case "CONSOLE_LOG": {
       const entries = [...state.consoleEntries, action.entry]
       if (entries.length > MAX_CONSOLE_ENTRIES) {
@@ -182,7 +267,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     treeChildren: new Map<string, TreeNode[]>(),
     tabs: [],
     activeTabId: null,
+    tabData: new Map<string, TabData>(),
     consoleEntries: [],
+    allDatabases: new Map<string, string[]>(),
+    visibleDatabases: new Map<string, string[]>(),
   })
 
   useEffect(() => {
@@ -286,11 +374,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "TREE_SET_LOADING", nodeId: nid, loading: true })
 
         if (!database) {
-          // Fetch databases
+          // Fetch databases — store full list, show only first MAX_VISIBLE_DATABASES in tree
           driver
             .listDatabases()
             .then((dbs) => {
-              const nodes: TreeNode[] = dbs.map((db) => ({
+              dispatch({ type: "SET_ALL_DATABASES", connectionId, databases: dbs })
+              const visible = dbs.slice(0, MAX_VISIBLE_DATABASES)
+              const nodes: TreeNode[] = visible.map((db) => ({
                 id: nodeId(connectionId, db),
                 label: db,
                 type: "database" as const,
@@ -298,7 +388,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 database: db,
               }))
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: nodes })
-              log("info", "query", `Listed ${dbs.length} databases`)
+              const extra = dbs.length > MAX_VISIBLE_DATABASES ? ` (showing ${MAX_VISIBLE_DATABASES} of ${dbs.length})` : ""
+              log("info", "query", `Listed ${dbs.length} databases${extra}`)
             })
             .catch((e) => {
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: [] })
@@ -358,6 +449,74 @@ export function AppProvider({ children }: { children: ReactNode }) {
     []
   )
 
+  const closeTab = useCallback((tabId: string) => {
+    dispatch({ type: "CLOSE_TAB", tabId })
+  }, [])
+
+  const closeOtherTabs = useCallback((tabId: string) => {
+    dispatch({ type: "CLOSE_OTHER_TABS", tabId })
+  }, [])
+
+  const closeAllTabs = useCallback(() => {
+    dispatch({ type: "CLOSE_ALL_TABS" })
+  }, [])
+
+  const nextTab = useCallback(() => {
+    dispatch({ type: "NEXT_TAB" })
+  }, [])
+
+  const prevTab = useCallback(() => {
+    dispatch({ type: "PREV_TAB" })
+  }, [])
+
+  const fetchTabData = useCallback(
+    (tabId: string, offset?: number, pageSize?: number) => {
+      const tab = state.tabs.find((t) => t.id === tabId)
+      if (!tab) return
+      const driver = driverMap.get(tab.connectionId)
+      if (!driver) return
+
+      const limit = pageSize ?? 20
+      const off = offset ?? 0
+
+      dispatch({
+        type: "SET_TAB_DATA",
+        tabId,
+        data: { loading: true, error: null, pageSize: limit, currentOffset: off },
+      })
+
+      driver
+        .query({ database: tab.database, collection: tab.collection, limit, offset: off })
+        .then((result) => {
+          dispatch({ type: "SET_TAB_DATA", tabId, data: { result, loading: false } })
+          log("info", "query", `${result.query} — ${result.duration}ms, ${result.rows.length} rows`)
+        })
+        .catch((e) => {
+          const msg = e instanceof Error ? e.message : String(e)
+          dispatch({ type: "SET_TAB_DATA", tabId, data: { loading: false, error: msg } })
+          log("error", "query", `Failed to query ${tab.collection}: ${msg}`)
+        })
+    },
+    [state.tabs, log]
+  )
+
+  const setVisibleDatabases = useCallback(
+    (connectionId: string, databases: string[]) => {
+      dispatch({ type: "SET_VISIBLE_DATABASES", connectionId, databases })
+      // Rebuild tree children for this connection
+      const connNid = nodeId(connectionId)
+      const nodes: TreeNode[] = databases.map((db) => ({
+        id: nodeId(connectionId, db),
+        label: db,
+        type: "database" as const,
+        connectionId,
+        database: db,
+      }))
+      dispatch({ type: "TREE_SET_CHILDREN", nodeId: connNid, children: nodes })
+    },
+    []
+  )
+
   return (
     <AppContext.Provider
       value={{
@@ -371,6 +530,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toggleExpand,
         selectNode,
         openCollection,
+        closeTab,
+        closeOtherTabs,
+        closeAllTabs,
+        nextTab,
+        prevTab,
+        fetchTabData,
+        setVisibleDatabases,
         log,
       }}
     >

@@ -28,13 +28,16 @@ function getShortcuts(focusZone: FocusZone, showQueryLog: boolean): Shortcut[] {
       { key: "a", desc: "Add" },
       { key: "Enter", desc: "Open/Expand" },
       { key: "h/l", desc: "Collapse/Expand" },
+      { key: "e", desc: "Pick DBs" },
       { key: "d", desc: "Disconnect" },
       { key: "x", desc: "Remove" },
     ],
     main: [
+      { key: "]/[", desc: "Switch Tab" },
+      { key: "w", desc: "Close Tab" },
+      { key: "r", desc: "Reload" },
       { key: "Enter", desc: "View Cell" },
       { key: "/", desc: "Filter" },
-      { key: "v", desc: "Switch View" },
     ],
     detail: [
       { key: "Esc", desc: "Close" },

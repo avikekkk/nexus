@@ -9,7 +9,10 @@ interface SidebarProps {
   width: number
   focused: boolean
   showConnectionForm: boolean
+  showDatabasePicker: boolean
   onShowConnectionForm: () => void
+  onShowDatabasePicker: (connectionId: string) => void
+  onFocusMain?: () => void
 }
 
 const STATUS_ICONS: Record<ConnectionStatus, string> = {
@@ -26,12 +29,27 @@ const STATUS_COLORS: Record<ConnectionStatus, string> = {
   error: "#f7768e",
 }
 
+function truncateName(name: string, maxLen: number): string {
+  if (name.length <= maxLen) return name
+  if (maxLen <= 1) return "…"
+  return name.slice(0, maxLen - 1) + "…"
+}
+
 type RowItem =
   | { kind: "connection"; index: number; connectionId: string }
   | { kind: "tree"; node: FlatNode }
+  | { kind: "more"; connectionId: string; totalCount: number; visibleCount: number }
 
-export function Sidebar({ width, focused, showConnectionForm, onShowConnectionForm }: SidebarProps) {
-  const { state, connectTo, disconnectFrom, addConnection, removeConnection, toggleExpand, openCollection } = useApp()
+export function Sidebar({
+  width,
+  focused,
+  showConnectionForm,
+  showDatabasePicker,
+  onShowConnectionForm,
+  onShowDatabasePicker,
+  onFocusMain,
+}: SidebarProps) {
+  const { state, connectTo, disconnectFrom, removeConnection, toggleExpand, openCollection } = useApp()
   const [selectedIndex, setSelectedIndex] = useState(0)
   const borderColor = focused ? "#7aa2f7" : "#414868"
 
@@ -41,7 +59,7 @@ export function Sidebar({ width, focused, showConnectionForm, onShowConnectionFo
     treeChildren: state.treeChildren,
   }
 
-  // Build flat list of all visible rows: connections + their tree nodes
+  // Build flat list of all visible rows: connections + their tree nodes + "more" indicators
   const rows = useMemo<RowItem[]>(() => {
     const items: RowItem[] = []
     state.connections.forEach((conn, i) => {
@@ -51,10 +69,31 @@ export function Sidebar({ width, focused, showConnectionForm, onShowConnectionFo
         for (const node of treeNodes) {
           items.push({ kind: "tree", node })
         }
+        // Show "more databases" indicator if there are hidden databases
+        const allDbs = state.allDatabases.get(conn.config.id)
+        const visibleDbs = state.visibleDatabases.get(conn.config.id)
+        if (allDbs && visibleDbs && allDbs.length > visibleDbs.length) {
+          const connNid = nodeId(conn.config.id)
+          if (state.treeExpanded.has(connNid)) {
+            items.push({
+              kind: "more",
+              connectionId: conn.config.id,
+              totalCount: allDbs.length,
+              visibleCount: visibleDbs.length,
+            })
+          }
+        }
       }
     })
     return items
-  }, [state.connections, state.treeExpanded, state.treeLoading, state.treeChildren])
+  }, [
+    state.connections,
+    state.treeExpanded,
+    state.treeLoading,
+    state.treeChildren,
+    state.allDatabases,
+    state.visibleDatabases,
+  ])
 
   // Auto-expand connection tree when first connected
   useEffect(() => {
@@ -77,7 +116,7 @@ export function Sidebar({ width, focused, showConnectionForm, onShowConnectionFo
 
   useKeyboard((key) => {
     if (!focused) return
-    if (showConnectionForm) return
+    if (showConnectionForm || showDatabasePicker) return
 
     if (key.name === "a") {
       onShowConnectionForm()
@@ -98,6 +137,25 @@ export function Sidebar({ width, focused, showConnectionForm, onShowConnectionFo
     const row = rows[selectedIndex]
     if (!row) return
 
+    // 'e' key — open database picker for the current connection
+    if (key.name === "e") {
+      let connectionId: string | null = null
+      if (row.kind === "connection") {
+        const conn = state.connections[row.index]
+        if (conn && conn.status === "connected") {
+          connectionId = conn.config.id
+        }
+      } else if (row.kind === "tree") {
+        connectionId = row.node.connectionId
+      } else if (row.kind === "more") {
+        connectionId = row.connectionId
+      }
+      if (connectionId && state.allDatabases.has(connectionId)) {
+        onShowDatabasePicker(connectionId)
+      }
+      return
+    }
+
     if (key.name === "return") {
       if (row.kind === "connection") {
         const conn = state.connections[row.index]
@@ -114,7 +172,10 @@ export function Sidebar({ width, focused, showConnectionForm, onShowConnectionFo
           toggleExpand(node.id, node.connectionId, node.database)
         } else if (node.type === "collection" && node.collection && node.database) {
           openCollection(node.connectionId, node.database, node.collection)
+          onFocusMain?.()
         }
+      } else if (row.kind === "more") {
+        onShowDatabasePicker(row.connectionId)
       }
       return
     }
@@ -200,17 +261,34 @@ export function Sidebar({ width, focused, showConnectionForm, onShowConnectionFo
               const bg = isSelected ? "#283457" : "transparent"
               const fg = isSelected ? "#c0caf5" : "#a9b1d6"
 
+              // Truncate name to fit: [border=1][paddingX=1] icon [gap=1] name " type" [paddingX=1][border=1]
+              const typeLabel = ` ${conn.config.type}`
+              const nameOverhead = 2 + 1 + 1 + typeLabel.length + 2
+              const maxNameLen = Math.max(3, width - nameOverhead)
+              const displayName = truncateName(conn.config.name, maxNameLen)
+
               return (
                 <box key={conn.config.id} flexDirection="row" gap={1} paddingX={1} backgroundColor={bg}>
                   <text fg={iconColor}>{icon}</text>
                   <text fg={fg}>
-                    {conn.config.name}
-                    <span fg="#414868"> {conn.config.type}</span>
+                    {displayName}
+                    <span fg="#414868">{typeLabel}</span>
                   </text>
                 </box>
               )
+            } else if (row.kind === "tree") {
+              return <TreeRow key={row.node.id} node={row.node} isSelected={isSelected} maxWidth={width - 2} />
             } else {
-              return <TreeRow key={row.node.id} node={row.node} isSelected={isSelected} />
+              // "more" row
+              const bg = isSelected ? "#283457" : "transparent"
+              return (
+                <box key={`more-${row.connectionId}`} paddingX={1} backgroundColor={bg}>
+                  <text fg="#7aa2f7">
+                    {"    "}… +{row.totalCount - row.visibleCount} more{" "}
+                    <span fg="#565f89">[e] to pick</span>
+                  </text>
+                </box>
+              )
             }
           })}
         </box>
@@ -223,11 +301,12 @@ export function Sidebar({ width, focused, showConnectionForm, onShowConnectionFo
             <>
               {"  "}
               <span fg="#7aa2f7">[Enter]</span> Open{"  "}
+              <span fg="#7aa2f7">[e]</span> DBs{"  "}
               <span fg="#7aa2f7">[x]</span> Remove
             </>
           ) : null}
         </text>
       </box>
-
-    </box>  )
+    </box>
+  )
 }
