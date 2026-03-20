@@ -1,5 +1,3 @@
-import { useMemo } from "react"
-import { SyntaxStyle, RGBA } from "@opentui/core"
 import { useApp } from "../../state/AppContext.tsx"
 import { formatTimestamp, type ConsoleEntry } from "../../state/console.ts"
 
@@ -14,23 +12,25 @@ function formatEntry(entry: ConsoleEntry): string {
   return `${time} │ ${entry.source.toUpperCase().padEnd(10)} │ ${levelLabel.padEnd(7)}${entry.message}`
 }
 
+function getLevelColor(level: ConsoleEntry["level"]): string {
+  switch (level) {
+    case "error":
+      return "#f7768e"
+    case "warning":
+      return "#e0af68"
+    case "info":
+      return "#7aa2f7"
+    case "success":
+      return "#9ece6a"
+    default:
+      return "#a9b1d6"
+  }
+}
+
 export function Console({ height, focused }: ConsoleProps) {
   const { state } = useApp()
   const borderColor = focused ? "#7aa2f7" : "#414868"
   const entries = state.consoleEntries
-
-  // Show the most recent entries that fit in the available height
-  const maxVisible = Math.max(0, height - 2) // subtract border top + bottom
-  const visible = entries.slice(-maxVisible)
-
-  // Create a simple syntax style for the console (no highlighting, just base colors)
-  const syntaxStyle = useMemo(() => {
-    const style = SyntaxStyle.create()
-    style.registerStyle("text", { fg: RGBA.fromHex("#565f89") })
-    return style
-  }, [])
-
-  const content = visible.map(formatEntry).join("\n")
 
   return (
     <box
@@ -42,19 +42,33 @@ export function Console({ height, focused }: ConsoleProps) {
       title=" Console "
       titleAlignment="left"
     >
-      {visible.length === 0 ? (
+      {entries.length === 0 ? (
         <box flexGrow={1} paddingX={1}>
           <text fg="#565f89">No activity yet</text>
         </box>
       ) : (
-        <code
-          content={content}
-          syntaxStyle={syntaxStyle}
-          selectable
-          fg="#a9b1d6"
-          paddingX={1}
+        <scrollbox
           flexGrow={1}
-        />
+          paddingX={1}
+          focused={focused}
+          stickyScroll
+          stickyStart="bottom"
+          scrollY
+          scrollX={false}
+          verticalScrollbarOptions={{
+            showArrows: false,
+            trackOptions: {
+              backgroundColor: "#1a1b26",
+              foregroundColor: "#414868",
+            },
+          }}
+        >
+          {entries.map((entry, idx) => (
+            <text key={idx} fg={getLevelColor(entry.level)}>
+              {formatEntry(entry)}
+            </text>
+          ))}
+        </scrollbox>
       )}
     </box>
   )

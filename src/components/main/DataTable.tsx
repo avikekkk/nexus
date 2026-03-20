@@ -31,10 +31,12 @@ const COLORS = {
   pageActive: "#7aa2f7",
   pageInactive: "#565f89",
   footerBg: "#1a1b26",
+  scrollTrack: "#1a1b26",
+  scrollThumb: "#414868",
 }
 
-const MIN_COL_WIDTH = 4
-const MAX_COL_WIDTH = 30
+const MIN_COL_WIDTH = 6
+const MAX_COL_WIDTH = 40
 const SAMPLE_ROWS = 20
 const ROW_NUM_WIDTH = 4
 const COL_SEPARATOR = " │ "
@@ -79,9 +81,9 @@ function padCell(text: string, width: number): string {
 function computeColumnWidths(
   columns: ColumnDef[],
   rows: Record<string, unknown>[],
-  availableWidth: number
+  _availableWidth: number
 ): number[] {
-  // First pass: compute ideal widths from data
+  // Compute natural widths from data - no shrinking to fit viewport
   const widths: number[] = columns.map((col) => Math.min(MAX_COL_WIDTH, Math.max(MIN_COL_WIDTH, col.name.length)))
 
   const sampleRows = rows.slice(0, SAMPLE_ROWS)
@@ -91,21 +93,6 @@ function computeColumnWidths(
       const value = row[col.name]
       const formatted = formatCellValue(value, MAX_COL_WIDTH)
       widths[i] = Math.min(MAX_COL_WIDTH, Math.max(widths[i]!, formatted.length))
-    }
-  }
-
-  // Second pass: shrink columns to fit available width
-  // Account for: paddingX(1+1) + row numbers + separators between columns
-  const separatorWidth = COL_SEPARATOR.length
-  const fixedOverhead = 2 + ROW_NUM_WIDTH + separatorWidth // padding + row num + separator after row num
-  const separatorTotal = Math.max(0, columns.length - 1) * separatorWidth
-  const totalIdeal = widths.reduce((a, b) => a + b, 0) + separatorTotal + fixedOverhead
-
-  if (totalIdeal > availableWidth && columns.length > 0) {
-    const budget = Math.max(columns.length * MIN_COL_WIDTH, availableWidth - separatorTotal - fixedOverhead)
-    const ratio = budget / widths.reduce((a, b) => a + b, 0)
-    for (let i = 0; i < widths.length; i++) {
-      widths[i] = Math.max(MIN_COL_WIDTH, Math.floor(widths[i]! * ratio))
     }
   }
 
@@ -124,8 +111,13 @@ export function DataTable({
   const { width: termWidth, height: termHeight } = useTerminalDimensions()
   const [selectedRow, setSelectedRow] = useState(0)
   const [selectedCol, setSelectedCol] = useState(0)
-  const [scrollOffset, setScrollOffset] = useState(0)
-  const [colScrollOffset, setColScrollOffset] = useState(0)
+  // Viewport offsets - what portion of content is visible
+  const [viewportRowOffset, setViewportRowOffset] = useState(0)
+  const [viewportColOffset, setViewportColOffset] = useState(0)
+  // Track if user is dragging the horizontal scrollbar
+  const [isDraggingHScrollbar, setIsDraggingHScrollbar] = useState(false)
+  const [dragStartX, setDragStartX] = useState(0)
+  const [dragStartColOffset, setDragStartColOffset] = useState(0)
 
   const { columns, rows, totalCount } = result
 
@@ -146,12 +138,13 @@ export function DataTable({
   )
 
   // Calculate which columns are visible based on horizontal scroll
+  // This is purely viewport-based - doesn't auto-adjust for selection
   const visibleColumns = useMemo(() => {
     const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length
     let usedWidth = fixedOverhead
     const visible: number[] = []
 
-    for (let i = colScrollOffset; i < columns.length; i++) {
+    for (let i = viewportColOffset; i < columns.length; i++) {
       const colWidth = columnWidths[i]!
       const sepWidth = visible.length > 0 ? COL_SEPARATOR.length : 0
       if (usedWidth + colWidth + sepWidth > availableWidth && visible.length > 0) break
@@ -159,63 +152,15 @@ export function DataTable({
       visible.push(i)
     }
 
-    // Ensure selected column is visible
-    if (visible.length > 0 && !visible.includes(selectedCol)) {
-      // Recalculate from selectedCol
-      return null // Signal to recalculate
-    }
-
     return visible
-  }, [colScrollOffset, columns.length, columnWidths, availableWidth, selectedCol])
+  }, [viewportColOffset, columns.length, columnWidths, availableWidth])
 
-  // Auto-adjust column scroll to keep selected column visible
-  const effectiveVisibleCols = useMemo(() => {
-    if (visibleColumns !== null) return visibleColumns
-
-    // Recalculate starting from selectedCol going backwards to fit as many as possible
-    const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length
-    let usedWidth = fixedOverhead
-    let startCol = selectedCol
-
-    // First, ensure selectedCol fits
-    usedWidth += columnWidths[selectedCol]!
-
-    // Try to include columns before selectedCol
-    for (let i = selectedCol - 1; i >= 0; i--) {
-      const needed = columnWidths[i]! + COL_SEPARATOR.length
-      if (usedWidth + needed > availableWidth) break
-      usedWidth += needed
-      startCol = i
-    }
-
-    // Now build the visible list forward
-    const visible: number[] = []
-    let w = fixedOverhead
-    for (let i = startCol; i < columns.length; i++) {
-      const colWidth = columnWidths[i]!
-      const sepWidth = visible.length > 0 ? COL_SEPARATOR.length : 0
-      if (w + colWidth + sepWidth > availableWidth && visible.length > 0) break
-      w += colWidth + sepWidth
-      visible.push(i)
-    }
-
-    return visible
-  }, [visibleColumns, selectedCol, columnWidths, columns.length, availableWidth])
-
-  // Sync colScrollOffset when visible columns change
-  const effectiveColScroll = effectiveVisibleCols.length > 0 ? effectiveVisibleCols[0]! : 0
-  useEffect(() => {
-    if (effectiveColScroll !== colScrollOffset) {
-      setColScrollOffset(effectiveColScroll)
-    }
-  }, [effectiveColScroll, colScrollOffset])
-
-  // Available height for data rows (subtract header, separator, footer, pagination)
+  // Available height for data rows (subtract header, separator, footer, scrollbar)
   const headerHeight = 1
   const separatorHeight = 1
   const footerHeight = 1
-  const paginationHeight = 1
-  const availableHeight = Math.max(1, termHeight - headerHeight - separatorHeight - footerHeight - paginationHeight - 4)
+  const hScrollbarHeight = 1
+  const availableHeight = Math.max(1, termHeight - headerHeight - separatorHeight - footerHeight - hScrollbarHeight - 4)
   const visibleRowCount = availableHeight
 
   // Pagination
@@ -224,9 +169,10 @@ export function DataTable({
   const hasNextPage = currentOffset + pageSize < totalCount
   const hasPrevPage = currentOffset > 0
 
-  const updateScroll = useCallback(
+  // Adjust viewport to keep selection visible (called when selection moves)
+  const ensureSelectionVisible = useCallback(
     (newRow: number) => {
-      setScrollOffset((prev) => {
+      setViewportRowOffset((prev) => {
         if (newRow < prev) return newRow
         if (newRow >= prev + visibleRowCount) return newRow - visibleRowCount + 1
         return prev
@@ -235,35 +181,99 @@ export function DataTable({
     [visibleRowCount]
   )
 
+  // Ensure selected column is visible (called when selection moves via arrow keys)
+  const ensureColVisible = useCallback(
+    (newCol: number) => {
+      // Check if newCol is outside current visible range
+      const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length
+
+      setViewportColOffset((prev) => {
+        // Calculate visible columns from current offset
+        let usedWidth = fixedOverhead
+        let firstVisible = prev
+        let lastVisible = prev
+
+        for (let i = prev; i < columns.length; i++) {
+          const colWidth = columnWidths[i]!
+          const sepWidth = i > prev ? COL_SEPARATOR.length : 0
+          if (usedWidth + colWidth + sepWidth > availableWidth && i > prev) break
+          usedWidth += colWidth + sepWidth
+          lastVisible = i
+        }
+
+        if (newCol < firstVisible) {
+          return newCol
+        } else if (newCol > lastVisible) {
+          // Find offset that makes newCol visible as last column
+          let w = fixedOverhead + columnWidths[newCol]!
+          let startCol = newCol
+          for (let i = newCol - 1; i >= 0; i--) {
+            const needed = columnWidths[i]! + COL_SEPARATOR.length
+            if (w + needed > availableWidth) break
+            w += needed
+            startCol = i
+          }
+          return startCol
+        }
+        return prev
+      })
+    },
+    [columns.length, columnWidths, availableWidth]
+  )
+
+  // Move selection (arrow keys) - viewport auto-adjusts
   const moveSelection = useCallback(
     (rowDelta: number, colDelta: number) => {
       if (rowDelta !== 0) {
         setSelectedRow((r) => {
           const newRow = Math.max(0, Math.min(rows.length - 1, r + rowDelta))
-          updateScroll(newRow)
+          ensureSelectionVisible(newRow)
           return newRow
         })
       }
       if (colDelta !== 0) {
-        setSelectedCol((c) => Math.max(0, Math.min(columns.length - 1, c + colDelta)))
+        setSelectedCol((c) => {
+          const newCol = Math.max(0, Math.min(columns.length - 1, c + colDelta))
+          ensureColVisible(newCol)
+          return newCol
+        })
       }
     },
-    [rows.length, columns.length, updateScroll]
+    [rows.length, columns.length, ensureSelectionVisible, ensureColVisible]
+  )
+
+  // Scroll viewport (mouse wheel) - selection stays in place
+  const scrollViewport = useCallback(
+    (rowDelta: number, colDelta: number) => {
+      if (rowDelta !== 0) {
+        setViewportRowOffset((prev) => {
+          const maxOffset = Math.max(0, rows.length - visibleRowCount)
+          return Math.max(0, Math.min(maxOffset, prev + rowDelta))
+        })
+      }
+      if (colDelta !== 0) {
+        setViewportColOffset((prev) => {
+          const maxOffset = Math.max(0, columns.length - 1)
+          return Math.max(0, Math.min(maxOffset, prev + colDelta))
+        })
+      }
+    },
+    [rows.length, columns.length, visibleRowCount]
   )
 
   const jumpToRow = useCallback(
     (row: number) => {
       const newRow = Math.max(0, Math.min(rows.length - 1, row))
       setSelectedRow(newRow)
-      updateScroll(newRow)
+      ensureSelectionVisible(newRow)
     },
-    [rows.length, updateScroll]
+    [rows.length, ensureSelectionVisible]
   )
 
   useKeyboard((key) => {
     if (!focused) return
 
-    // Arrow keys
+    // Arrow keys - move selection
     if (key.name === "down" || key.name === "j") {
       moveSelection(1, 0)
       return
@@ -305,13 +315,13 @@ export function DataTable({
     if (key.name === "n" && hasNextPage && onPageChange) {
       onPageChange(currentOffset + pageSize)
       setSelectedRow(0)
-      setScrollOffset(0)
+      setViewportRowOffset(0)
       return
     }
     if (key.name === "p" && hasPrevPage && onPageChange) {
       onPageChange(Math.max(0, currentOffset - pageSize))
       setSelectedRow(0)
-      setScrollOffset(0)
+      setViewportRowOffset(0)
       return
     }
 
@@ -325,28 +335,28 @@ export function DataTable({
     }
   })
 
-  // Mouse scroll handler for vertical and horizontal scrolling
+  // Mouse scroll handler - scrolls viewport, not selection
   const handleMouseScroll = useCallback(
     (event: TuiMouseEvent) => {
       if (!focused || !event.scroll) return
       const { direction, delta } = event.scroll
 
       if (direction === "up" || direction === "down") {
-        // Shift+scroll = horizontal scrolling
+        // Shift+scroll = horizontal scrolling (by columns)
         if (event.modifiers.shift) {
           const colDelta = direction === "down" ? 1 : -1
-          moveSelection(0, colDelta * Math.max(1, delta))
+          scrollViewport(0, colDelta * Math.max(1, delta))
         } else {
-          // Vertical scrolling: move row selection
+          // Vertical scrolling: scroll viewport
           const rowDelta = direction === "down" ? 1 : -1
-          moveSelection(rowDelta * Math.max(1, delta), 0)
+          scrollViewport(rowDelta * Math.max(1, delta), 0)
         }
       } else if (direction === "left" || direction === "right") {
         const colDelta = direction === "right" ? 1 : -1
-        moveSelection(0, colDelta * Math.max(1, delta))
+        scrollViewport(0, colDelta * Math.max(1, delta))
       }
     },
-    [focused, moveSelection]
+    [focused, scrollViewport]
   )
 
   // Build row number column width
@@ -362,15 +372,15 @@ export function DataTable({
       {COL_SEPARATOR}
     </span>,
   ]
-  for (let vi = 0; vi < effectiveVisibleCols.length; vi++) {
-    const colIdx = effectiveVisibleCols[vi]!
+  for (let vi = 0; vi < visibleColumns.length; vi++) {
+    const colIdx = visibleColumns[vi]!
     const col = columns[colIdx]!
     const w = columnWidths[colIdx]!
     const text = padCell(formatCellValue(col.name, w), w)
     headerParts.push(
       <span key={col.name} fg={COLORS.header}>
         {text}
-        {vi < effectiveVisibleCols.length - 1 ? <span fg={COLORS.separator}>{COL_SEPARATOR}</span> : ""}
+        {vi < visibleColumns.length - 1 ? <span fg={COLORS.separator}>{COL_SEPARATOR}</span> : ""}
       </span>
     )
   }
@@ -378,9 +388,9 @@ export function DataTable({
   // Render separator
   const sepParts = [
     "─".repeat(ROW_NUM_WIDTH) + "─┼─",
-    ...effectiveVisibleCols.map((colIdx, vi) => {
+    ...visibleColumns.map((colIdx, vi) => {
       const w = columnWidths[colIdx]!
-      return "─".repeat(w) + (vi < effectiveVisibleCols.length - 1 ? "─┼─" : "")
+      return "─".repeat(w) + (vi < visibleColumns.length - 1 ? "─┼─" : "")
     }),
   ]
   const separatorLine = sepParts.join("")
@@ -388,7 +398,7 @@ export function DataTable({
   // Render data rows
   const dataRows: any[] = []
   for (let viewIdx = 0; viewIdx < visibleRowCount; viewIdx++) {
-    const actualRowIdx = scrollOffset + viewIdx
+    const actualRowIdx = viewportRowOffset + viewIdx
     if (actualRowIdx >= rows.length) break
 
     const row = rows[actualRowIdx]!
@@ -401,8 +411,8 @@ export function DataTable({
       </span>,
     ]
 
-    for (let vi = 0; vi < effectiveVisibleCols.length; vi++) {
-      const colIdx = effectiveVisibleCols[vi]!
+    for (let vi = 0; vi < visibleColumns.length; vi++) {
+      const colIdx = visibleColumns[vi]!
       const col = columns[colIdx]!
       const w = columnWidths[colIdx]!
       const value = row[col.name]
@@ -415,7 +425,7 @@ export function DataTable({
       cellParts.push(
         <span key={col.name} fg={color} bg={isSelectedCell ? COLORS.selectedCell : undefined}>
           {padded}
-          {vi < effectiveVisibleCols.length - 1 ? <span fg={COLORS.separator}>{COL_SEPARATOR}</span> : ""}
+          {vi < visibleColumns.length - 1 ? <span fg={COLORS.separator}>{COL_SEPARATOR}</span> : ""}
         </span>
       )
     }
@@ -428,24 +438,63 @@ export function DataTable({
   }
 
   // Horizontal scroll indicator
-  const hasColsLeft = effectiveColScroll > 0
-  const hasColsRight = effectiveVisibleCols.length > 0
-    && effectiveVisibleCols[effectiveVisibleCols.length - 1]! < columns.length - 1
+  const hasColsLeft = viewportColOffset > 0
+  const hasColsRight = visibleColumns.length > 0 && visibleColumns[visibleColumns.length - 1]! < columns.length - 1
+  const showHorizontalScrollbar = columns.length > visibleColumns.length
+
+  // Horizontal scrollbar calculation
+  const hScrollbarWidth = availableWidth - 2 // Account for padding
+  const maxColScroll = Math.max(0, columns.length - 1)
+  // Thumb size proportional to visible columns
+  const hThumbRatio = Math.min(0.5, Math.max(0.1, visibleColumns.length / columns.length))
+  const hThumbSize = Math.max(3, Math.round(hThumbRatio * hScrollbarWidth))
+  const hThumbPosition = maxColScroll > 0 ? Math.round((viewportColOffset / maxColScroll) * (hScrollbarWidth - hThumbSize)) : 0
+
+  // Handle horizontal scrollbar mouse events
+  const handleHScrollbarMouseDown = useCallback(
+    (event: TuiMouseEvent) => {
+      if (!showHorizontalScrollbar) return
+
+      const clickX = event.x - 1 // Account for paddingX
+
+      // Check if click is on thumb
+      if (clickX >= hThumbPosition && clickX < hThumbPosition + hThumbSize) {
+        // Start dragging
+        setIsDraggingHScrollbar(true)
+        setDragStartX(clickX)
+        setDragStartColOffset(viewportColOffset)
+      } else {
+        // Click on track - jump to position
+        const ratio = clickX / hScrollbarWidth
+        const newColOffset = Math.round(ratio * maxColScroll)
+        setViewportColOffset(Math.max(0, Math.min(maxColScroll, newColOffset)))
+      }
+    },
+    [showHorizontalScrollbar, hThumbPosition, hThumbSize, hScrollbarWidth, maxColScroll, viewportColOffset]
+  )
+
+  const handleHScrollbarMouseDrag = useCallback(
+    (event: TuiMouseEvent) => {
+      if (!isDraggingHScrollbar) return
+
+      const currentX = event.x - 1
+      const deltaX = currentX - dragStartX
+      const colsPerPixel = maxColScroll / (hScrollbarWidth - hThumbSize)
+      const newColOffset = Math.round(dragStartColOffset + deltaX * colsPerPixel)
+      setViewportColOffset(Math.max(0, Math.min(maxColScroll, newColOffset)))
+    },
+    [isDraggingHScrollbar, dragStartX, dragStartColOffset, maxColScroll, hScrollbarWidth, hThumbSize]
+  )
+
+  const handleHScrollbarMouseDragEnd = useCallback(() => {
+    setIsDraggingHScrollbar(false)
+  }, [])
 
   // Pagination bar
   const pageInfo = `Page ${currentPage}/${totalPages}`
-  const rowRange = rows.length > 0
-    ? `Rows ${currentOffset + 1}–${currentOffset + rows.length} of ${totalCount}`
-    : "No rows"
+  const rowRange = rows.length > 0 ? `Rows ${currentOffset + 1}–${currentOffset + rows.length} of ${totalCount}` : "No rows"
   const colInfo = `Col ${selectedCol + 1}/${columns.length}`
-  const scrollHint = [
-    hasColsLeft ? "◀" : "",
-    hasColsRight ? "▶" : "",
-  ].filter(Boolean).join(" ")
-  const navHint = [
-    hasPrevPage ? "[p]prev" : "",
-    hasNextPage ? "[n]next" : "",
-  ].filter(Boolean).join("  ")
+  const navHint = [hasPrevPage ? "[p]prev" : "", hasNextPage ? "[n]next" : ""].filter(Boolean).join("  ")
 
   return (
     <box flexDirection="column" flexGrow={1} onMouseScroll={handleMouseScroll}>
@@ -461,12 +510,31 @@ export function DataTable({
 
       {/* Data rows */}
       <box flexDirection="column" flexGrow={1} paddingX={1}>
-        {dataRows.length > 0 ? dataRows : (
+        {dataRows.length > 0 ? (
+          dataRows
+        ) : (
           <box justifyContent="center" alignItems="center" flexGrow={1}>
             <text fg={COLORS.dim}>No data</text>
           </box>
         )}
       </box>
+
+      {/* Horizontal scrollbar - thin line style */}
+      {showHorizontalScrollbar && (
+        <box
+          height={1}
+          paddingX={1}
+          onMouseDown={handleHScrollbarMouseDown}
+          onMouseDrag={handleHScrollbarMouseDrag}
+          onMouseDragEnd={handleHScrollbarMouseDragEnd}
+        >
+          <text>
+            <span fg={COLORS.scrollTrack}>{"▁".repeat(hThumbPosition)}</span>
+            <span fg={COLORS.scrollThumb}>{"▂".repeat(hThumbSize)}</span>
+            <span fg={COLORS.scrollTrack}>{"▁".repeat(Math.max(0, hScrollbarWidth - hThumbPosition - hThumbSize))}</span>
+          </text>
+        </box>
+      )}
 
       {/* Footer / Pagination */}
       <box height={1} paddingX={1} flexDirection="row" backgroundColor={COLORS.footerBg}>
@@ -476,7 +544,9 @@ export function DataTable({
           <span fg={COLORS.pageActive}>{pageInfo}</span>
           {"  "}
           {colInfo}
-          {scrollHint ? `  ${scrollHint}` : ""}
+          {hasColsLeft || hasColsRight ? "  " : ""}
+          {hasColsLeft && <span fg={COLORS.pageActive}>◀</span>}
+          {hasColsRight && <span fg={COLORS.pageActive}>▶</span>}
           {navHint ? (
             <>
               {"  "}
