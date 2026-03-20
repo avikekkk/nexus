@@ -114,10 +114,6 @@ export function DataTable({
   // Viewport offsets - what portion of content is visible
   const [viewportRowOffset, setViewportRowOffset] = useState(0)
   const [viewportColOffset, setViewportColOffset] = useState(0)
-  // Track if user is dragging the horizontal scrollbar
-  const [isDraggingHScrollbar, setIsDraggingHScrollbar] = useState(false)
-  const [dragStartX, setDragStartX] = useState(0)
-  const [dragStartColOffset, setDragStartColOffset] = useState(0)
 
   const { columns, rows, totalCount } = result
 
@@ -450,46 +446,6 @@ export function DataTable({
   const hThumbSize = Math.max(3, Math.round(hThumbRatio * hScrollbarWidth))
   const hThumbPosition = maxColScroll > 0 ? Math.round((viewportColOffset / maxColScroll) * (hScrollbarWidth - hThumbSize)) : 0
 
-  // Handle horizontal scrollbar mouse events
-  const handleHScrollbarMouseDown = useCallback(
-    (event: TuiMouseEvent) => {
-      if (!showHorizontalScrollbar) return
-
-      const clickX = event.x - 1 // Account for paddingX
-
-      // Check if click is on thumb
-      if (clickX >= hThumbPosition && clickX < hThumbPosition + hThumbSize) {
-        // Start dragging
-        setIsDraggingHScrollbar(true)
-        setDragStartX(clickX)
-        setDragStartColOffset(viewportColOffset)
-      } else {
-        // Click on track - jump to position
-        const ratio = clickX / hScrollbarWidth
-        const newColOffset = Math.round(ratio * maxColScroll)
-        setViewportColOffset(Math.max(0, Math.min(maxColScroll, newColOffset)))
-      }
-    },
-    [showHorizontalScrollbar, hThumbPosition, hThumbSize, hScrollbarWidth, maxColScroll, viewportColOffset]
-  )
-
-  const handleHScrollbarMouseDrag = useCallback(
-    (event: TuiMouseEvent) => {
-      if (!isDraggingHScrollbar) return
-
-      const currentX = event.x - 1
-      const deltaX = currentX - dragStartX
-      const colsPerPixel = maxColScroll / (hScrollbarWidth - hThumbSize)
-      const newColOffset = Math.round(dragStartColOffset + deltaX * colsPerPixel)
-      setViewportColOffset(Math.max(0, Math.min(maxColScroll, newColOffset)))
-    },
-    [isDraggingHScrollbar, dragStartX, dragStartColOffset, maxColScroll, hScrollbarWidth, hThumbSize]
-  )
-
-  const handleHScrollbarMouseDragEnd = useCallback(() => {
-    setIsDraggingHScrollbar(false)
-  }, [])
-
   // Pagination bar
   const pageInfo = `Page ${currentPage}/${totalPages}`
   const rowRange = rows.length > 0 ? `Rows ${currentOffset + 1}–${currentOffset + rows.length} of ${totalCount}` : "No rows"
@@ -519,15 +475,9 @@ export function DataTable({
         )}
       </box>
 
-      {/* Horizontal scrollbar - thin line style */}
+      {/* Horizontal scroll indicator */}
       {showHorizontalScrollbar && (
-        <box
-          height={1}
-          paddingX={1}
-          onMouseDown={handleHScrollbarMouseDown}
-          onMouseDrag={handleHScrollbarMouseDrag}
-          onMouseDragEnd={handleHScrollbarMouseDragEnd}
-        >
+        <box height={1} paddingX={1}>
           <text>
             <span fg={COLORS.scrollTrack}>{"▁".repeat(hThumbPosition)}</span>
             <span fg={COLORS.scrollThumb}>{"▂".repeat(hThumbSize)}</span>
@@ -553,6 +503,12 @@ export function DataTable({
               <span fg={COLORS.pageInactive}>{navHint}</span>
             </>
           ) : null}
+          {showHorizontalScrollbar && (
+            <>
+              {"  "}
+              <span fg={COLORS.pageInactive}>[⇧+scroll] h-scroll</span>
+            </>
+          )}
         </text>
       </box>
     </box>
