@@ -143,13 +143,50 @@ export function DataTable({
     for (let i = viewportColOffset; i < columns.length; i++) {
       const colWidth = columnWidths[i]!
       const sepWidth = visible.length > 0 ? COL_SEPARATOR.length : 0
-      if (usedWidth + colWidth + sepWidth > availableWidth && visible.length > 0) break
+      // Always include at least one column; include subsequent ones if ≥1 char fits
+      if (availableWidth - usedWidth - sepWidth < 1 && visible.length > 0) break
       usedWidth += colWidth + sepWidth
       visible.push(i)
+      // Stop after a partial column — no room for more
+      if (usedWidth >= availableWidth) break
     }
 
     return visible
   }, [viewportColOffset, columns.length, columnWidths, availableWidth])
+
+  // Maximum viewportColOffset that still shows the last column - prevents over-scrolling
+  // past the end and eliminates the large trailing gap.
+  const maxColOffset = useMemo(() => {
+    if (columns.length === 0) return 0
+    const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length
+    let w = fixedOverhead + columnWidths[columns.length - 1]!
+    let startCol = columns.length - 1
+    for (let i = columns.length - 2; i >= 0; i--) {
+      const needed = columnWidths[i]! + COL_SEPARATOR.length
+      if (w + needed > availableWidth) break
+      w += needed
+      startCol = i
+    }
+    return startCol
+  }, [columns.length, columnWidths, availableWidth])
+
+  // Clamp viewportColOffset when maxColOffset shrinks (e.g. terminal resize or data change)
+  useEffect(() => {
+    setViewportColOffset((prev) => Math.min(prev, maxColOffset))
+  }, [maxColOffset])
+
+  // The last visible column may be clipped to the remaining space (partial column at right edge)
+  const lastVisibleDisplayWidth = useMemo(() => {
+    if (visibleColumns.length === 0) return 0
+    const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length
+    let usedWidth = fixedOverhead
+    for (let vi = 0; vi < visibleColumns.length - 1; vi++) {
+      usedWidth += columnWidths[visibleColumns[vi]!]! + COL_SEPARATOR.length
+    }
+    const remaining = availableWidth - usedWidth
+    const lastColIdx = visibleColumns[visibleColumns.length - 1]!
+    return Math.max(1, Math.min(columnWidths[lastColIdx]!, remaining))
+  }, [visibleColumns, columnWidths, availableWidth])
 
   // Available height for data rows (subtract header, separator, footer, scrollbar)
   const headerHeight = 1
@@ -248,13 +285,10 @@ export function DataTable({
         })
       }
       if (colDelta !== 0) {
-        setViewportColOffset((prev) => {
-          const maxOffset = Math.max(0, columns.length - 1)
-          return Math.max(0, Math.min(maxOffset, prev + colDelta))
-        })
+        setViewportColOffset((prev) => Math.max(0, Math.min(maxColOffset, prev + colDelta)))
       }
     },
-    [rows.length, columns.length, visibleRowCount]
+    [rows.length, columns.length, visibleRowCount, maxColOffset]
   )
 
   const jumpToRow = useCallback(
@@ -371,7 +405,7 @@ export function DataTable({
   for (let vi = 0; vi < visibleColumns.length; vi++) {
     const colIdx = visibleColumns[vi]!
     const col = columns[colIdx]!
-    const w = columnWidths[colIdx]!
+    const w = vi === visibleColumns.length - 1 ? lastVisibleDisplayWidth : columnWidths[colIdx]!
     const text = padCell(formatCellValue(col.name, w), w)
     headerParts.push(
       <span key={col.name} fg={COLORS.header}>
@@ -385,7 +419,7 @@ export function DataTable({
   const sepParts = [
     "─".repeat(ROW_NUM_WIDTH) + "─┼─",
     ...visibleColumns.map((colIdx, vi) => {
-      const w = columnWidths[colIdx]!
+      const w = vi === visibleColumns.length - 1 ? lastVisibleDisplayWidth : columnWidths[colIdx]!
       return "─".repeat(w) + (vi < visibleColumns.length - 1 ? "─┼─" : "")
     }),
   ]
@@ -410,7 +444,7 @@ export function DataTable({
     for (let vi = 0; vi < visibleColumns.length; vi++) {
       const colIdx = visibleColumns[vi]!
       const col = columns[colIdx]!
-      const w = columnWidths[colIdx]!
+      const w = vi === visibleColumns.length - 1 ? lastVisibleDisplayWidth : columnWidths[colIdx]!
       const value = row[col.name]
       const formatted = formatCellValue(value, w)
       const padded = padCell(formatted, w)
@@ -435,12 +469,12 @@ export function DataTable({
 
   // Horizontal scroll indicator
   const hasColsLeft = viewportColOffset > 0
-  const hasColsRight = visibleColumns.length > 0 && visibleColumns[visibleColumns.length - 1]! < columns.length - 1
-  const showHorizontalScrollbar = columns.length > visibleColumns.length
+  const hasColsRight = viewportColOffset < maxColOffset
+  const showHorizontalScrollbar = maxColOffset > 0
 
   // Horizontal scrollbar calculation
   const hScrollbarWidth = availableWidth - 2 // Account for padding
-  const maxColScroll = Math.max(0, columns.length - 1)
+  const maxColScroll = maxColOffset
   // Thumb size proportional to visible columns
   const hThumbRatio = Math.min(0.5, Math.max(0.1, visibleColumns.length / columns.length))
   const hThumbSize = Math.max(3, Math.round(hThumbRatio * hScrollbarWidth))
