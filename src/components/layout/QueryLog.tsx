@@ -9,7 +9,7 @@ interface ConsoleProps {
 function formatEntry(entry: ConsoleEntry): string {
   const time = formatTimestamp(entry.timestamp)
   const levelLabel = entry.level === "warning" ? "WARN" : entry.level.toUpperCase()
-  return `${time} │ ${entry.source.toUpperCase().padEnd(10)} │ ${levelLabel.padEnd(7)}${entry.message}`
+  return `${time} │ ${entry.source.toUpperCase().padEnd(10)} │ ${levelLabel.padEnd(8)}${entry.message}`
 }
 
 function getLevelColor(level: ConsoleEntry["level"]): string {
