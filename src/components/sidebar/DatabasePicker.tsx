@@ -122,12 +122,14 @@ export function DatabasePicker({ connectionId, connectionName, left, top, onClos
         </box>
       </box>
 
-      <box paddingX={1} marginTop={0}>
+      <box paddingX={1} marginTop={0} flexDirection="column" flexShrink={0}>
         <text fg="#414868">
-          <span fg="#565f89">[Space]</span> Toggle{"  "}
-          <span fg="#565f89">[a]</span> All{"  "}
-          <span fg="#565f89">[n]</span> None{"  "}
-          <span fg="#565f89">[Esc]</span> Close
+          <span fg="#565f89">[Space]</span> Toggle {"  "}
+          <span fg="#565f89">[a]</span> All {"  "}
+          <span fg="#565f89">[n]</span> None
+        </text>
+        <text fg="#414868">
+          <span fg="#565f89">[s/Esc]</span> Save & Close
         </text>
       </box>
     </box>

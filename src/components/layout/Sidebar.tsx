@@ -294,18 +294,22 @@ export function Sidebar({
         </box>
       )}
 
-      <box paddingX={1} paddingBottom={0}>
+      <box paddingX={1} paddingBottom={0} flexDirection="column" flexShrink={0}>
         <text fg="#414868">
           <span fg="#7aa2f7">[a]</span> Add
           {state.connections.length > 0 ? (
             <>
               {"  "}
-              <span fg="#7aa2f7">[Enter]</span> Open{"  "}
-              <span fg="#7aa2f7">[e]</span> DBs{"  "}
-              <span fg="#7aa2f7">[x]</span> Remove
+              <span fg="#7aa2f7">[e]</span> DBs
             </>
           ) : null}
         </text>
+        {state.connections.length > 0 ? (
+          <text fg="#414868">
+            <span fg="#7aa2f7">[Enter]</span> Open{"  "}
+            <span fg="#7aa2f7">[x]</span> Del
+          </text>
+        ) : null}
       </box>
     </box>
   )
