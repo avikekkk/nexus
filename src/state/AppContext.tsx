@@ -36,6 +36,7 @@ interface AppState {
   consoleEntries: ConsoleEntry[]
   allDatabases: Map<string, string[]>
   visibleDatabases: Map<string, string[]>
+  userSelectedDatabases: Set<string> // Track which connections have user-selected databases
 }
 
 const MAX_VISIBLE_DATABASES = 10
@@ -61,7 +62,7 @@ type AppAction =
   | { type: "SET_TAB_DATA"; tabId: string; data: Partial<TabData> }
   | { type: "CONSOLE_LOG"; entry: ConsoleEntry }
   | { type: "SET_ALL_DATABASES"; connectionId: string; databases: string[] }
-  | { type: "SET_VISIBLE_DATABASES"; connectionId: string; databases: string[] }
+  | { type: "SET_VISIBLE_DATABASES"; connectionId: string; databases: string[]; userSelected?: boolean }
 
 interface AppContextValue {
   state: AppState
@@ -245,7 +246,15 @@ function reducer(state: AppState, action: AppAction): AppState {
       const visibleDatabases = cloneMap(state.visibleDatabases)
       visibleDatabases.set(action.connectionId, action.databases)
       debug(`[Reducer] visibleDatabases map now has ${visibleDatabases.size} entries`)
-      return { ...state, visibleDatabases }
+      
+      // Track if this is user-selected
+      const userSelectedDatabases = cloneSet(state.userSelectedDatabases)
+      if (action.userSelected) {
+        userSelectedDatabases.add(action.connectionId)
+        debug(`[Reducer] Marking ${action.connectionId} as user-selected`)
+      }
+      
+      return { ...state, visibleDatabases, userSelectedDatabases }
     }
     case "CONSOLE_LOG": {
       const entries = [...state.consoleEntries, action.entry]
@@ -281,6 +290,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     consoleEntries: [],
     allDatabases: new Map<string, string[]>(),
     visibleDatabases: new Map<string, string[]>(),
+    userSelectedDatabases: new Set<string>(),
   })
 
   useEffect(() => {
@@ -293,7 +303,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           debug(`[AppContext] Checking config ${config.id} (${config.name}), visibleDatabases:`, config.visibleDatabases)
           if (config.visibleDatabases) {
             debug(`[AppContext] Dispatching SET_VISIBLE_DATABASES for ${config.id} with ${config.visibleDatabases.length} databases`)
-            dispatch({ type: "SET_VISIBLE_DATABASES", connectionId: config.id, databases: config.visibleDatabases })
+            dispatch({ type: "SET_VISIBLE_DATABASES", connectionId: config.id, databases: config.visibleDatabases, userSelected: true })
           }
         })
       }
@@ -532,7 +542,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setVisibleDatabases = useCallback(
     (connectionId: string, databases: string[]) => {
       debug(`[setVisibleDatabases] Called for ${connectionId} with ${databases.length} databases:`, databases)
-      dispatch({ type: "SET_VISIBLE_DATABASES", connectionId, databases })
+      dispatch({ type: "SET_VISIBLE_DATABASES", connectionId, databases, userSelected: true })
       // Rebuild tree children for this connection
       const connNid = nodeId(connectionId)
       const nodes: TreeNode[] = databases.map((db) => ({

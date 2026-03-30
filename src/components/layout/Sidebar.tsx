@@ -70,9 +70,11 @@ export function Sidebar({
           items.push({ kind: "tree", node })
         }
         // Show "more databases" indicator if there are hidden databases
+        // BUT only if the user hasn't explicitly selected which databases to show
         const allDbs = state.allDatabases.get(conn.config.id)
         const visibleDbs = state.visibleDatabases.get(conn.config.id)
-        if (allDbs && visibleDbs && allDbs.length > visibleDbs.length) {
+        const isUserSelected = state.userSelectedDatabases.has(conn.config.id)
+        if (allDbs && visibleDbs && allDbs.length > visibleDbs.length && !isUserSelected) {
           const connNid = nodeId(conn.config.id)
           if (state.treeExpanded.has(connNid)) {
             items.push({
@@ -93,6 +95,7 @@ export function Sidebar({
     state.treeChildren,
     state.allDatabases,
     state.visibleDatabases,
+    state.userSelectedDatabases,
   ])
 
   // Auto-expand connection tree when first connected
