@@ -404,6 +404,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (!database) {
           // Fetch databases — store full list, show only first MAX_VISIBLE_DATABASES in tree
+          const conn = state.connections.find((c) => c.config.id === connectionId)
+          const connLabel = conn ? conn.config.name : connectionId
+          log("info", "connection", `Fetching databases from ${connLabel}...`)
           driver
             .listDatabases()
             .then((dbs) => {
@@ -440,6 +443,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             })
         } else {
           // Fetch collections for a database
+          const conn = state.connections.find((c) => c.config.id === connectionId)
+          const dbType = conn?.config.type ?? "unknown"
+          const itemType = dbType === "mysql" ? "tables" : dbType === "redis" ? "keys" : "collections"
+          log("info", "connection", `Fetching ${itemType} from database: ${database}...`)
           driver
             .listCollections(database)
             .then((cols) => {
@@ -453,12 +460,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 count: col.count,
               }))
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: nodes })
-              log("info", "query", `Listed ${cols.length} collections in ${database}`)
+              log("info", "connection", `Accessed database: ${database} (${cols.length} ${itemType})`)
             })
             .catch((e) => {
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: [] })
               const msg = e instanceof Error ? e.message : String(e)
-              log("error", "query", `Failed to list collections in ${database}: ${msg}`)
+              log("error", "query", `Failed to list ${itemType} in ${database}: ${msg}`)
             })
             .finally(() => {
               dispatch({ type: "TREE_SET_LOADING", nodeId: nid, loading: false })
@@ -466,7 +473,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [state.treeExpanded, state.treeChildren, state.visibleDatabases, log]
+    [state.treeExpanded, state.treeChildren, state.visibleDatabases, state.connections, log]
   )
 
   const selectNode = useCallback((nid: string | null) => {
@@ -475,6 +482,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const openCollection = useCallback(
     (connectionId: string, database: string, collection: string) => {
+      const conn = state.connections.find((c) => c.config.id === connectionId)
+      const dbType = conn?.config.type ?? "unknown"
+      const itemName = dbType === "mysql" ? "table" : dbType === "redis" ? "keys" : "collection"
+      log("info", "connection", `Opened ${itemName}: ${collection} in database ${database}`)
       const tabId = `${connectionId}/${database}/${collection}`
       const tab: Tab = {
         id: tabId,
@@ -485,7 +496,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       dispatch({ type: "OPEN_TAB", tab })
     },
-    []
+    [log, state.connections]
   )
 
   const closeTab = useCallback((tabId: string) => {
@@ -515,6 +526,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const driver = driverMap.get(tab.connectionId)
       if (!driver) return
 
+      const conn = state.connections.find((c) => c.config.id === tab.connectionId)
+      const dbType = conn?.config.type ?? "unknown"
+      const itemName = dbType === "mysql" ? "table" : dbType === "redis" ? "keys" : "collection"
+
       const limit = pageSize ?? 20
       const off = offset ?? 0
 
@@ -524,6 +539,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         data: { loading: true, error: null, pageSize: limit, currentOffset: off },
       })
 
+      log("info", "query", `Querying ${itemName} ${tab.collection} in database ${tab.database}...`)
       driver
         .query({ database: tab.database, collection: tab.collection, limit, offset: off })
         .then((result) => {
@@ -533,15 +549,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         .catch((e) => {
           const msg = e instanceof Error ? e.message : String(e)
           dispatch({ type: "SET_TAB_DATA", tabId, data: { loading: false, error: msg } })
-          log("error", "query", `Failed to query ${tab.collection}: ${msg}`)
+          log("error", "query", `Failed to query ${itemName} ${tab.collection}: ${msg}`)
         })
     },
-    [state.tabs, log]
+    [state.tabs, state.connections, log]
   )
 
   const setVisibleDatabases = useCallback(
     (connectionId: string, databases: string[]) => {
       debug(`[setVisibleDatabases] Called for ${connectionId} with ${databases.length} databases:`, databases)
+      const conn = state.connections.find((c) => c.config.id === connectionId)
+      if (conn) {
+        log("info", "connection", `Selected ${databases.length} database(s) for ${conn.config.name}`)
+      }
       dispatch({ type: "SET_VISIBLE_DATABASES", connectionId, databases, userSelected: true })
       // Rebuild tree children for this connection
       const connNid = nodeId(connectionId)
@@ -562,7 +582,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       debug(`[setVisibleDatabases] Persisting to disk, updated connection visibleDatabases:`, updatedConnections.find(c => c.config.id === connectionId)?.config.visibleDatabases)
       saveConnections(updatedConnections.map((c) => c.config))
     },
-    [state.connections]
+    [state.connections, log]
   )
 
   return (
