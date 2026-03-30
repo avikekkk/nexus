@@ -5,6 +5,7 @@ import { loadConnections, saveConnections, generateId } from "./connections.ts"
 import { nodeId, type TreeNode } from "./tree.ts"
 import type { ConsoleEntry, LogLevel, LogSource } from "./console.ts"
 import { debug } from "../utils/debug.ts"
+import { formatConnectionError } from "../utils/errorFormatter.ts"
 
 export interface Tab {
   id: string
@@ -332,9 +333,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "SET_ACTIVE", id })
       log("success", "connection", `Connected to ${label}`)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      dispatch({ type: "SET_STATUS", id, status: "error", error: msg })
-      log("error", "connection", `Failed to connect to ${label}: ${msg}`)
+      const userMsg = formatConnectionError(e)
+      dispatch({ type: "SET_STATUS", id, status: "error", error: userMsg })
+      log("error", "connection", `Failed to connect to ${label}: ${userMsg}`)
     }
   }
 
