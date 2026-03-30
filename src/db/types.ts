@@ -11,6 +11,7 @@ export interface ConnectionConfig {
   database?: string
   tls?: boolean
   url?: string
+  visibleDatabases?: string[]
 }
 
 export interface CollectionInfo {

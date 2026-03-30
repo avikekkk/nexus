@@ -4,6 +4,7 @@ import { createDriver } from "../db/registry.ts"
 import { loadConnections, saveConnections, generateId } from "./connections.ts"
 import { nodeId, type TreeNode } from "./tree.ts"
 import type { ConsoleEntry, LogLevel, LogSource } from "./console.ts"
+import { debug } from "../utils/debug.ts"
 
 export interface Tab {
   id: string
@@ -225,16 +226,24 @@ function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, tabData }
     }
     case "SET_ALL_DATABASES": {
+      debug(`[Reducer] SET_ALL_DATABASES for ${action.connectionId}, databases:`, action.databases.length)
       const allDatabases = cloneMap(state.allDatabases)
       allDatabases.set(action.connectionId, action.databases)
-      // Also set visible databases (first N)
+      // Only set visible databases if they haven't been set yet (to preserve saved preferences)
       const visibleDatabases = cloneMap(state.visibleDatabases)
-      visibleDatabases.set(action.connectionId, action.databases.slice(0, MAX_VISIBLE_DATABASES))
+      if (!visibleDatabases.has(action.connectionId)) {
+        debug(`[Reducer] SET_ALL_DATABASES: No saved visible databases, setting default first ${MAX_VISIBLE_DATABASES}`)
+        visibleDatabases.set(action.connectionId, action.databases.slice(0, MAX_VISIBLE_DATABASES))
+      } else {
+        debug(`[Reducer] SET_ALL_DATABASES: Preserving existing visible databases (${visibleDatabases.get(action.connectionId)?.length})`)
+      }
       return { ...state, allDatabases, visibleDatabases }
     }
     case "SET_VISIBLE_DATABASES": {
+      debug(`[Reducer] SET_VISIBLE_DATABASES for ${action.connectionId}, databases:`, action.databases)
       const visibleDatabases = cloneMap(state.visibleDatabases)
       visibleDatabases.set(action.connectionId, action.databases)
+      debug(`[Reducer] visibleDatabases map now has ${visibleDatabases.size} entries`)
       return { ...state, visibleDatabases }
     }
     case "CONSOLE_LOG": {
@@ -275,8 +284,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadConnections().then((configs) => {
+      debug("[AppContext] Loaded connections:", JSON.stringify(configs, null, 2))
       if (configs.length > 0) {
         dispatch({ type: "SET_CONNECTIONS", configs })
+        // Initialize visibleDatabases from saved configs
+        configs.forEach((config) => {
+          debug(`[AppContext] Checking config ${config.id} (${config.name}), visibleDatabases:`, config.visibleDatabases)
+          if (config.visibleDatabases) {
+            debug(`[AppContext] Dispatching SET_VISIBLE_DATABASES for ${config.id} with ${config.visibleDatabases.length} databases`)
+            dispatch({ type: "SET_VISIBLE_DATABASES", connectionId: config.id, databases: config.visibleDatabases })
+          }
+        })
       }
     })
   }, [])
@@ -378,8 +396,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
           driver
             .listDatabases()
             .then((dbs) => {
+              debug(`[toggleExpand] Fetched ${dbs.length} databases for ${connectionId}`)
               dispatch({ type: "SET_ALL_DATABASES", connectionId, databases: dbs })
-              const visible = dbs.slice(0, MAX_VISIBLE_DATABASES)
+              
+              // Check if we have saved visible databases
+              const savedVisible = state.visibleDatabases.get(connectionId)
+              debug(`[toggleExpand] Saved visible databases for ${connectionId}:`, savedVisible)
+              
+              const visible = savedVisible && savedVisible.length > 0 
+                ? savedVisible 
+                : dbs.slice(0, MAX_VISIBLE_DATABASES)
+              debug(`[toggleExpand] Using visible databases (${visible.length}):`, visible)
+              
               const nodes: TreeNode[] = visible.map((db) => ({
                 id: nodeId(connectionId, db),
                 label: db,
@@ -388,7 +416,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 database: db,
               }))
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: nodes })
-              const extra = dbs.length > MAX_VISIBLE_DATABASES ? ` (showing ${MAX_VISIBLE_DATABASES} of ${dbs.length})` : ""
+              const extra = dbs.length > visible.length ? ` (showing ${visible.length} of ${dbs.length})` : ""
               log("info", "query", `Listed ${dbs.length} databases${extra}`)
             })
             .catch((e) => {
@@ -427,7 +455,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [state.treeExpanded, state.treeChildren, log]
+    [state.treeExpanded, state.treeChildren, state.visibleDatabases, log]
   )
 
   const selectNode = useCallback((nid: string | null) => {
@@ -502,6 +530,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setVisibleDatabases = useCallback(
     (connectionId: string, databases: string[]) => {
+      debug(`[setVisibleDatabases] Called for ${connectionId} with ${databases.length} databases:`, databases)
       dispatch({ type: "SET_VISIBLE_DATABASES", connectionId, databases })
       // Rebuild tree children for this connection
       const connNid = nodeId(connectionId)
@@ -512,9 +541,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         connectionId,
         database: db,
       }))
+      debug(`[setVisibleDatabases] Setting tree children for ${connNid} with ${nodes.length} nodes`)
       dispatch({ type: "TREE_SET_CHILDREN", nodeId: connNid, children: nodes })
+      
+      // Persist to disk
+      const updatedConnections = state.connections.map((c) =>
+        c.config.id === connectionId ? { ...c, config: { ...c.config, visibleDatabases: databases } } : c
+      )
+      debug(`[setVisibleDatabases] Persisting to disk, updated connection visibleDatabases:`, updatedConnections.find(c => c.config.id === connectionId)?.config.visibleDatabases)
+      saveConnections(updatedConnections.map((c) => c.config))
     },
-    []
+    [state.connections]
   )
 
   return (
