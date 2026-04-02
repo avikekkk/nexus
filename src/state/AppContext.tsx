@@ -45,6 +45,7 @@ const MAX_VISIBLE_DATABASES = 10
 type AppAction =
   | { type: "SET_CONNECTIONS"; configs: ConnectionConfig[] }
   | { type: "ADD_CONNECTION"; config: ConnectionConfig }
+  | { type: "UPDATE_CONNECTION"; id: string; config: Omit<ConnectionConfig, "id"> }
   | { type: "REMOVE_CONNECTION"; id: string }
   | { type: "SET_STATUS"; id: string; status: ConnectionStatus; error?: string }
   | { type: "SET_ACTIVE"; id: string | null }
@@ -72,6 +73,7 @@ interface AppContextValue {
   connectTo: (id: string) => Promise<void>
   disconnectFrom: (id: string) => Promise<void>
   addConnection: (config: Omit<ConnectionConfig, "id">) => void
+  updateConnection: (id: string, config: Omit<ConnectionConfig, "id">) => void
   removeConnection: (id: string) => void
   getDriver: (id: string) => DbDriver | undefined
   toggleExpand: (nid: string, connectionId: string, database?: string) => void
@@ -112,6 +114,13 @@ function reducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         connections: [...state.connections, { config: action.config, status: "disconnected" }],
+      }
+    case "UPDATE_CONNECTION":
+      return {
+        ...state,
+        connections: state.connections.map((c) =>
+          c.config.id === action.id ? { ...c, config: { ...action.config, id: action.id } } : c
+        ),
       }
     case "REMOVE_CONNECTION":
       return {
@@ -387,6 +396,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     log("info", "system", `Added connection "${config.name}"`)
   }
 
+  const updateConnection = (id: string, config: Omit<ConnectionConfig, "id">) => {
+    const conn = state.connections.find((c) => c.config.id === id)
+    const oldName = conn?.config.name ?? id
+    dispatch({ type: "UPDATE_CONNECTION", id, config })
+    log("info", "system", `Updated connection "${oldName}" to "${config.name}"`)
+    
+    // Persist to disk
+    const allConfigs = state.connections.map((c) => {
+      if (c.config.id === id) {
+        return { ...config, id }
+      }
+      return c.config
+    })
+    saveConnections(allConfigs)
+  }
+
   const removeConnection = (id: string) => {
     const conn = state.connections.find((c) => c.config.id === id)
     const label = conn ? conn.config.name : id
@@ -613,6 +638,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         connectTo,
         disconnectFrom,
         addConnection,
+        updateConnection,
         removeConnection,
         getDriver,
         toggleExpand,

@@ -3,6 +3,9 @@ import { useKeyboard } from "@opentui/react"
 import { useApp } from "../../state/AppContext.tsx"
 import { debug } from "../../utils/debug.ts"
 import { nodeId } from "../../state/tree.ts"
+import type { DbType } from "../../db/types.ts"
+import { DEFAULT_PORTS } from "../../db/types.ts"
+import { parseConnectionUrl } from "../../db/url.ts"
 
 interface DatabasePickerProps {
   connectionId: string
@@ -15,7 +18,10 @@ interface DatabasePickerProps {
 }
 
 export function DatabasePicker({ connectionId, connectionName, database, mode = "select", left, top, onClose }: DatabasePickerProps) {
-  const { state, setVisibleDatabases, openCollection } = useApp()
+  const { state, setVisibleDatabases, openCollection, updateConnection } = useApp()
+
+  // Tab state: 'databases' or 'edit'
+  const [activeTab, setActiveTab] = useState<"databases" | "edit">("databases")
 
   // For "select" mode: list of all databases
   const allDbs = state.allDatabases.get(connectionId) ?? []
@@ -30,8 +36,28 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   const [searchMode, setSearchMode] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
 
+  // Edit form state
+  const currentConnection = state.connections.find((c) => c.config.id === connectionId)
+  const existingConfig = currentConnection?.config
+  const [editName, setEditName] = useState(existingConfig?.name ?? "")
+  const [editDbType, setEditDbType] = useState<DbType>(existingConfig?.type ?? "mongo")
+  const [editUrl, setEditUrl] = useState(existingConfig?.url ?? "")
+  const [editHost, setEditHost] = useState(existingConfig?.host ?? "localhost")
+  const [editPort, setEditPort] = useState(String(existingConfig?.port ?? DEFAULT_PORTS.mongo))
+  const [editUsername, setEditUsername] = useState(existingConfig?.username ?? "")
+  const [editPassword, setEditPassword] = useState(existingConfig?.password ?? "")
+  const [editFocusIndex, setEditFocusIndex] = useState(0)
+  const [editUrlError, setEditUrlError] = useState("")
+
+  const DB_TYPES: { name: string; value: DbType }[] = [
+    { name: "MongoDB", value: "mongo" },
+    { name: "MySQL", value: "mysql" },
+    { name: "Redis", value: "redis" },
+  ]
+  const EDIT_FIELD_COUNT = 8
+
   const isSearch = mode === "search"
-  const title = isSearch ? ` Search: ${database} ` : " Select Databases "
+  const title = isSearch ? ` Search: ${database} ` : activeTab === "databases" ? " Select Databases " : " Edit Connection "
 
   debug(`[DatabasePicker] render: mode=${mode}, searchMode=${searchMode}, searchQuery="${searchQuery}", isSearch=${isSearch}`)
 
@@ -40,6 +66,26 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       setSelected(new Set(visibleDbs))
     }
   }, [visibleDbs, mode])
+
+  // Validate edit URL
+  const hasEditUrl = editUrl.trim().length > 0
+  useEffect(() => {
+    if (!hasEditUrl) {
+      setEditUrlError("")
+      return
+    }
+    const result = parseConnectionUrl(editUrl, editDbType)
+    if (!result.valid) {
+      setEditUrlError(result.error ?? "Invalid URL")
+      return
+    }
+    setEditUrlError("")
+    const p = result.parsed!
+    setEditHost(p.host)
+    setEditPort(String(p.port))
+    setEditUsername(p.username ?? "")
+    setEditPassword(p.password ?? "")
+  }, [editUrl, editDbType, hasEditUrl])
 
   // Build the full item list based on mode
   const allItems = useMemo(() => {
@@ -75,11 +121,100 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   const minListRows = 8
   const maxListRows = 15
   const listRows = Math.max(minListRows, Math.min(displayItems.length, maxListRows))
-  const height = 1 + 1 + searchRows + listRows + 2 + 2 // title + info + search + list + shortcuts + padding
+  const tabHeaderRows = !isSearch ? 2 : 0 // Tab headers when in select mode
+  // Edit tab: tabs(2) + fields(8) + error row(0-1) + save button(2) + hints(3) = ~15-16 + padding
+  const height = activeTab === "edit" ? 21 : 1 + 1 + searchRows + listRows + 2 + 2 + tabHeaderRows // title + info + search + list + shortcuts + padding + tabs
   const listHeight = listRows
 
   useKeyboard((key) => {
-    debug(`[DatabasePicker] key pressed: name="${key.name}", searchMode=${searchMode}, ctrl=${key.ctrl}, meta=${key.meta}`)
+    debug(`[DatabasePicker] key pressed: name="${key.name}", searchMode=${searchMode}, ctrl=${key.ctrl}, meta=${key.meta}, activeTab=${activeTab}`)
+    
+    // Handle tab switching with [t] key only (not Tab key)
+    if (!searchMode && mode === "select" && key.name === "t" && !key.ctrl) {
+      setActiveTab((tab) => (tab === "databases" ? "edit" : "databases"))
+      return
+    }
+    
+    // If on edit tab, handle edit form keys
+    if (activeTab === "edit") {
+      if (key.name === "escape") {
+        onClose()
+        return
+      }
+
+      const disabledFields = hasEditUrl ? new Set([3, 4, 5, 6]) : new Set<number>()
+
+      // Tab and Shift+Tab navigate form fields
+      if (key.name === "tab") {
+        setEditFocusIndex((i) => {
+          const dir = key.shift ? -1 : 1
+          let next = (i + dir + EDIT_FIELD_COUNT) % EDIT_FIELD_COUNT
+          while (disabledFields.has(next)) {
+            next = (next + dir + EDIT_FIELD_COUNT) % EDIT_FIELD_COUNT
+          }
+          return next
+        })
+        return
+      }
+
+      // Arrow keys (up/down) navigate form fields
+      if (key.name === "down") {
+        setEditFocusIndex((i) => {
+          let next = (i + 1) % EDIT_FIELD_COUNT
+          while (disabledFields.has(next)) {
+            next = (next + 1) % EDIT_FIELD_COUNT
+          }
+          return next
+        })
+        return
+      }
+
+      if (key.name === "up") {
+        setEditFocusIndex((i) => {
+          let next = (i - 1 + EDIT_FIELD_COUNT) % EDIT_FIELD_COUNT
+          while (disabledFields.has(next)) {
+            next = (next - 1 + EDIT_FIELD_COUNT) % EDIT_FIELD_COUNT
+          }
+          return next
+        })
+        return
+      }
+
+      if (key.name === "return") {
+        if (editFocusIndex === 7) {
+          if (hasEditUrl && editUrlError) {
+            return
+          }
+          const config = {
+            name: editName || `${editDbType} connection`,
+            type: editDbType,
+            host: editHost,
+            port: parseInt(editPort, 10) || DEFAULT_PORTS[editDbType],
+            username: editUsername || undefined,
+            password: editPassword || undefined,
+            url: hasEditUrl ? editUrl.trim() : undefined,
+          }
+          updateConnection(connectionId, config)
+          onClose()
+          return
+        }
+      }
+
+      if (editFocusIndex === 1) {
+        if (key.name === "left" || key.name === "right" || key.name === "j" || key.name === "k") {
+          const currentIdx = DB_TYPES.findIndex((t) => t.value === editDbType)
+          const dir = key.name === "left" || key.name === "k" ? -1 : 1
+          const nextIdx = (currentIdx + dir + DB_TYPES.length) % DB_TYPES.length
+          const next = DB_TYPES[nextIdx]!
+          setEditDbType(next.value)
+          if (!hasEditUrl) {
+            setEditPort(String(DEFAULT_PORTS[next.value]))
+          }
+        }
+      }
+
+      return
+    }
     
     // Handle escape - different behavior in search vs normal mode
     if (key.name === "escape") {
@@ -190,12 +325,12 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
     }
 
     if (!isSearch && key.name === "a") {
-      setSelected(new Set(allItems))
-      return
-    }
-
-    if (!isSearch && key.name === "n") {
-      setSelected(new Set())
+      // Toggle: if all selected, unselect all; otherwise select all
+      if (selected.size === allItems.length) {
+        setSelected(new Set())
+      } else {
+        setSelected(new Set(allItems))
+      }
       return
     }
   })
@@ -223,7 +358,27 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       titleAlignment="center"
       zIndex={100}
     >
-      <box flexDirection="column" padding={1} gap={0} flexGrow={1}>
+      {/* Tab headers (only in select mode, not search mode) */}
+      {!isSearch && (
+        <box flexDirection="row" gap={2} paddingX={1} paddingTop={1}>
+          <box
+            backgroundColor={activeTab === "databases" ? "#7aa2f7" : "#292e42"}
+            paddingX={1}
+          >
+            <text fg={activeTab === "databases" ? "#1a1b26" : "#a9b1d6"}> Databases </text>
+          </box>
+          <box
+            backgroundColor={activeTab === "edit" ? "#7aa2f7" : "#292e42"}
+            paddingX={1}
+          >
+            <text fg={activeTab === "edit" ? "#1a1b26" : "#a9b1d6"}> Edit Connection </text>
+          </box>
+        </box>
+      )}
+
+      {/* Databases tab content */}
+      {activeTab === "databases" && (
+        <box flexDirection="column" padding={1} gap={0} flexGrow={1}>
         <box flexDirection="row" justifyContent="space-between" width="100%">
           <text fg="#a9b1d6">{infoText}</text>
           {!searchMode && searchQuery && (
@@ -276,34 +431,195 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
             </box>
           )}
         </box>
-      </box>
 
-      <box paddingX={1} marginTop={0} flexDirection="column" flexShrink={0}>
-        {isSearch ? (
-          <>
-            <text fg="#414868">
-              <span fg="#565f89">[Enter]</span> Open {"  "}
-              <span fg="#565f89">[/]</span> Search
-            </text>
-            <text fg="#414868">
-              <span fg="#565f89">[j/k]</span> Navigate {"  "}
-              <span fg="#565f89">[Esc]</span> Close
-            </text>
-          </>
+        <box paddingX={1} marginTop={0} flexDirection="column" flexShrink={0}>
+          {isSearch ? (
+            <>
+              <text fg="#414868">
+                <span fg="#565f89">[Enter]</span> Open {"  "}
+                <span fg="#565f89">[/]</span> Search
+              </text>
+              <text fg="#414868">
+                <span fg="#565f89">[j/k]</span> Navigate {"  "}
+                <span fg="#565f89">[Esc]</span> Close
+              </text>
+            </>
         ) : (
           <>
             <text fg="#414868">
               <span fg="#565f89">[Space]</span> Toggle {"  "}
-              <span fg="#565f89">[a]</span> All {"  "}
-              <span fg="#565f89">[n]</span> None
+              <span fg="#565f89">[a]</span> Check/Uncheck All
             </text>
             <text fg="#414868">
+              <span fg="#565f89">[t]</span> Tab {"  "}
               <span fg="#565f89">[/]</span> Search {"  "}
               <span fg="#565f89">[Esc]</span> Close
             </text>
           </>
         )}
+        </box>
       </box>
+      )}
+
+      {/* Edit connection tab content */}
+      {!isSearch && activeTab === "edit" && existingConfig && (
+        <box flexDirection="column" padding={1} gap={0} flexGrow={1}>
+          {/* Name */}
+          <box flexDirection="row" gap={1}>
+            <text width={11} fg={editFocusIndex === 0 ? "#7aa2f7" : "#565f89"}>
+              Name
+            </text>
+            <input
+              value={editName}
+              onChange={setEditName}
+              placeholder="My Database"
+              focused={editFocusIndex === 0}
+              width={30}
+              backgroundColor="#16161e"
+              focusedBackgroundColor="#292e42"
+              textColor="#c0caf5"
+            />
+          </box>
+
+          {/* Type */}
+          <box flexDirection="row" gap={1}>
+            <text width={11} fg={editFocusIndex === 1 ? "#7aa2f7" : "#565f89"}>
+              Type
+            </text>
+            <box flexDirection="row" gap={1} width={30}>
+              {DB_TYPES.map((t) => (
+                <text
+                  key={t.value}
+                  fg={editDbType === t.value ? "#1a1b26" : "#a9b1d6"}
+                  bg={editDbType === t.value ? "#7aa2f7" : "#292e42"}
+                >
+                  {" "}
+                  {t.name}{" "}
+                </text>
+              ))}
+            </box>
+          </box>
+
+          {/* URL */}
+          <box flexDirection="row" gap={1}>
+            <text width={11} fg={editFocusIndex === 2 ? "#7aa2f7" : "#565f89"}>
+              URL
+            </text>
+            <input
+              value={editUrl}
+              onChange={setEditUrl}
+              placeholder="mongodb://user:pass@host:port/db"
+              focused={editFocusIndex === 2}
+              width={30}
+              backgroundColor="#16161e"
+              focusedBackgroundColor="#292e42"
+              textColor="#c0caf5"
+            />
+          </box>
+
+          {/* URL error */}
+          {hasEditUrl && editUrlError ? (
+            <box flexDirection="row" gap={1}>
+              <text width={11}>{" "}</text>
+              <text fg="#f7768e" width={30}>
+                {editUrlError}
+              </text>
+            </box>
+          ) : null}
+
+          {/* Host */}
+          <box flexDirection="row" gap={1}>
+            <text width={11} fg={hasEditUrl ? "#414868" : editFocusIndex === 3 ? "#7aa2f7" : "#565f89"}>
+              Host
+            </text>
+            <input
+              value={editHost}
+              onChange={hasEditUrl ? () => {} : setEditHost}
+              placeholder="localhost"
+              focused={!hasEditUrl && editFocusIndex === 3}
+              width={30}
+              backgroundColor="#16161e"
+              focusedBackgroundColor={hasEditUrl ? "#16161e" : "#292e42"}
+              textColor={hasEditUrl ? "#414868" : "#c0caf5"}
+            />
+          </box>
+
+          {/* Port */}
+          <box flexDirection="row" gap={1}>
+            <text width={11} fg={hasEditUrl ? "#414868" : editFocusIndex === 4 ? "#7aa2f7" : "#565f89"}>
+              Port
+            </text>
+            <input
+              value={editPort}
+              onChange={hasEditUrl ? () => {} : setEditPort}
+              placeholder={String(DEFAULT_PORTS[editDbType])}
+              focused={!hasEditUrl && editFocusIndex === 4}
+              width={30}
+              backgroundColor="#16161e"
+              focusedBackgroundColor={hasEditUrl ? "#16161e" : "#292e42"}
+              textColor={hasEditUrl ? "#414868" : "#c0caf5"}
+            />
+          </box>
+
+          {/* Username */}
+          <box flexDirection="row" gap={1}>
+            <text width={11} fg={hasEditUrl ? "#414868" : editFocusIndex === 5 ? "#7aa2f7" : "#565f89"}>
+              Username
+            </text>
+            <input
+              value={editUsername}
+              onChange={hasEditUrl ? () => {} : setEditUsername}
+              placeholder="optional"
+              focused={!hasEditUrl && editFocusIndex === 5}
+              width={30}
+              backgroundColor="#16161e"
+              focusedBackgroundColor={hasEditUrl ? "#16161e" : "#292e42"}
+              textColor={hasEditUrl ? "#414868" : "#c0caf5"}
+            />
+          </box>
+
+          {/* Password */}
+          <box flexDirection="row" gap={1}>
+            <text width={11} fg={hasEditUrl ? "#414868" : editFocusIndex === 6 ? "#7aa2f7" : "#565f89"}>
+              Password
+            </text>
+            <input
+              value={editPassword}
+              onChange={hasEditUrl ? () => {} : setEditPassword}
+              placeholder="optional"
+              focused={!hasEditUrl && editFocusIndex === 6}
+              width={30}
+              backgroundColor="#16161e"
+              focusedBackgroundColor={hasEditUrl ? "#16161e" : "#292e42"}
+              textColor={hasEditUrl ? "#414868" : "#c0caf5"}
+            />
+          </box>
+
+          {/* Save button */}
+          <box flexDirection="row" gap={1} marginTop={1}>
+            <text width={11}>{" "}</text>
+            <box
+              width={30}
+              backgroundColor={editFocusIndex === 7 ? "#7aa2f7" : "#292e42"}
+              justifyContent="center"
+            >
+              <text fg={editFocusIndex === 7 ? "#1a1b26" : "#a9b1d6"}> Save Changes </text>
+            </box>
+          </box>
+
+          {/* Hints */}
+          <box paddingX={0} marginTop={1} flexDirection="column" flexShrink={0}>
+            <text fg="#414868">
+              <span fg="#565f89">[Tab/↑↓]</span> Navigate {"  "}
+              <span fg="#565f89">[Enter]</span> Save
+            </text>
+            <text fg="#414868">
+              <span fg="#565f89">[t]</span> Switch Tab {"  "}
+              <span fg="#565f89">[Esc]</span> Cancel
+            </text>
+          </box>
+        </box>
+      )}
     </box>
   )
 }

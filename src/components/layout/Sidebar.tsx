@@ -348,15 +348,26 @@ export function Sidebar({
               const icon = STATUS_ICONS[conn.status]
               const iconColor = STATUS_COLORS[conn.status]
               const typeLabel = ` ${conn.config.type}`
-              const maxNameLen = Math.max(3, width - 2 - 1 - 1 - typeLabel.length - 2)
+              
+              // Get database count for this connection
+              const allDbs = state.allDatabases.get(conn.config.id)
+              const dbCount = allDbs ? allDbs.length : 0
+              const dbCountLabel = dbCount > 0 ? ` (${dbCount})` : ""
+              
+              const maxNameLen = Math.max(3, width - 2 - 1 - 1 - typeLabel.length - dbCountLabel.length - 2)
               const displayName = truncateName(conn.config.name, maxNameLen)
               return (
-                <box key={conn.config.id} flexDirection="row" gap={1} paddingX={1} backgroundColor={bg}>
-                  <text fg={iconColor}>{icon}</text>
-                  <text fg={fg}>
-                    {displayName}
-                    <span fg="#414868">{typeLabel}</span>
-                  </text>
+                <box key={conn.config.id} flexDirection="row" gap={1} paddingX={1} backgroundColor={bg} justifyContent="space-between">
+                  <box flexDirection="row" gap={1}>
+                    <text fg={iconColor}>{icon}</text>
+                    <text fg={fg}>
+                      {displayName}
+                      <span fg="#414868">{typeLabel}</span>
+                    </text>
+                  </box>
+                  {dbCount > 0 && (
+                    <text fg="#565f89">{dbCountLabel}</text>
+                  )}
                 </box>
               )
             }

@@ -8,6 +8,8 @@ import { debug } from "../../utils/debug.ts"
 interface ConnectionFormProps {
   left?: number
   top?: number
+  editMode?: boolean
+  existingConfig?: ConnectionConfig
   onSubmit: (config: Omit<ConnectionConfig, "id">) => void
   onCancel: () => void
 }
@@ -20,14 +22,14 @@ const DB_TYPES: { name: string; value: DbType }[] = [
 
 const FIELD_COUNT = 8
 
-export function ConnectionForm({ left, top, onSubmit, onCancel }: ConnectionFormProps) {
-  const [name, setName] = useState("")
-  const [dbType, setDbType] = useState<DbType>("mongo")
-  const [url, setUrl] = useState("")
-  const [host, setHost] = useState("localhost")
-  const [port, setPort] = useState(String(DEFAULT_PORTS.mongo))
-  const [username, setUsername] = useState("")
-  const [password, setPassword] = useState("")
+export function ConnectionForm({ left, top, editMode = false, existingConfig, onSubmit, onCancel }: ConnectionFormProps) {
+  const [name, setName] = useState(existingConfig?.name ?? "")
+  const [dbType, setDbType] = useState<DbType>(existingConfig?.type ?? "mongo")
+  const [url, setUrl] = useState(existingConfig?.url ?? "")
+  const [host, setHost] = useState(existingConfig?.host ?? "localhost")
+  const [port, setPort] = useState(String(existingConfig?.port ?? DEFAULT_PORTS.mongo))
+  const [username, setUsername] = useState(existingConfig?.username ?? "")
+  const [password, setPassword] = useState(existingConfig?.password ?? "")
   const [focusIndex, setFocusIndex] = useState(0)
   const [urlError, setUrlError] = useState("")
 
@@ -124,7 +126,7 @@ export function ConnectionForm({ left, top, onSubmit, onCancel }: ConnectionForm
       left={left ?? 2}
       top={top ?? 1}
       width={52}
-      height={19}
+      height={editMode ? 21 : 19}
       flexDirection="column"
       border
       borderStyle="rounded"
@@ -135,6 +137,11 @@ export function ConnectionForm({ left, top, onSubmit, onCancel }: ConnectionForm
       zIndex={100}
     >
       <box flexDirection="column" padding={1} gap={0}>
+        {editMode && (
+          <box flexDirection="row" marginBottom={1}>
+            <text fg="#e0af68">Editing: {existingConfig?.name}</text>
+          </box>
+        )}
         {/* Name */}
         <box flexDirection="row" gap={1}>
           <text width={labelWidth} fg={focusIndex === 0 ? activeLabelFg : labelFg}>
