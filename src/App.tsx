@@ -25,6 +25,7 @@ export function App() {
   const [showDetail, setShowDetail] = useState(false)
   const [showConnectionForm, setShowConnectionForm] = useState(false)
   const [databasePickerConnectionId, setDatabasePickerConnectionId] = useState<string | null>(null)
+  const [searchDialogDb, setSearchDialogDb] = useState<{ connectionId: string; connectionName: string; database: string } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
   const isNarrow = width < 100
@@ -60,7 +61,7 @@ export function App() {
     }
 
     // Block all other keys when modal is open
-    if (showConnectionForm || databasePickerConnectionId) return
+    if (showConnectionForm || databasePickerConnectionId || searchDialogDb) return
 
     if (key.name === "`") {
       setShowQueryLog((v) => !v)
@@ -91,6 +92,9 @@ export function App() {
   const detailWidth = showDetail ? (isNarrow ? 20 : 28) : 0
   const queryLogHeight = showQueryLog ? 8 : 0
   const statusBarHeight = 1
+  const bottomMarginHeight = 1
+  const hasModalOpen = showConnectionForm || !!databasePickerConnectionId || !!searchDialogDb
+  const topAreaHeight = Math.max(6, height - queryLogHeight - statusBarHeight - bottomMarginHeight)
 
   // Center the connection form modal
   const formWidth = 52
@@ -101,14 +105,18 @@ export function App() {
   return (
     <box flexDirection="column" width="100%" height="100%">
       {/* Top area: sidebar + main + detail */}
-      <box flexDirection="row" flexGrow={1}>
+      <box flexDirection="row" height={topAreaHeight}>
         <Sidebar
           width={sidebarWidth}
-          focused={focusZone === "sidebar"}
+          height={topAreaHeight}
+          focused={focusZone === "sidebar" && !hasModalOpen}
           showConnectionForm={showConnectionForm}
           showDatabasePicker={!!databasePickerConnectionId}
+          showSearchDialog={!!searchDialogDb}
+          searchDialogDb={searchDialogDb}
           onShowConnectionForm={() => setShowConnectionForm(true)}
           onShowDatabasePicker={(connectionId) => setDatabasePickerConnectionId(connectionId)}
+          onShowSearchDialog={(connectionId, connectionName, database) => setSearchDialogDb({ connectionId, connectionName, database })}
           onFocusMain={() => setFocusZone("main")}
         />
 
@@ -185,6 +193,37 @@ export function App() {
               left={pickerLeft}
               top={pickerTop}
               onClose={() => setDatabasePickerConnectionId(null)}
+            />
+          </>
+        )
+      })()}
+
+      {/* Modal overlay + search/filter dialog for collections */}
+      {searchDialogDb && (() => {
+        const dialogWidth = 50
+        const dialogHeight = 22
+        const dialogLeft = Math.max(0, Math.floor((width - dialogWidth) / 2))
+        const dialogTop = Math.max(0, Math.floor((height - dialogHeight) / 2))
+        return (
+          <>
+            <box
+              position="absolute"
+              left={0}
+              top={0}
+              width="100%"
+              height="100%"
+              backgroundColor="#000000"
+              opacity={0.6}
+              zIndex={50}
+            />
+            <DatabasePicker
+              connectionId={searchDialogDb.connectionId}
+              connectionName={searchDialogDb.connectionName}
+              database={searchDialogDb.database}
+              mode="search"
+              left={dialogLeft}
+              top={dialogTop}
+              onClose={() => setSearchDialogDb(null)}
             />
           </>
         )

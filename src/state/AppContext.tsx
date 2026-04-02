@@ -30,6 +30,7 @@ interface AppState {
   treeSelected: string | null
   treeLoading: Set<string>
   treeChildren: Map<string, TreeNode[]>
+  treeVisibleCount: Map<string, number> // nodeId -> visible item count for pagination
   tabs: Tab[]
   activeTabId: string | null
   tabData: Map<string, TabData>
@@ -63,6 +64,7 @@ type AppAction =
   | { type: "CONSOLE_LOG"; entry: ConsoleEntry }
   | { type: "SET_ALL_DATABASES"; connectionId: string; databases: string[] }
   | { type: "SET_VISIBLE_DATABASES"; connectionId: string; databases: string[]; userSelected?: boolean }
+  | { type: "TREE_LOAD_MORE"; nodeId: string }
 
 interface AppContextValue {
   state: AppState
@@ -82,6 +84,7 @@ interface AppContextValue {
   prevTab: () => void
   fetchTabData: (tabId: string, offset?: number, pageSize?: number) => void
   setVisibleDatabases: (connectionId: string, databases: string[]) => void
+  loadMoreChildren: (nodeId: string) => void
   log: (level: LogLevel, source: LogSource, message: string) => void
 }
 
@@ -256,6 +259,14 @@ function reducer(state: AppState, action: AppAction): AppState {
       
       return { ...state, visibleDatabases, userSelectedDatabases }
     }
+    case "TREE_LOAD_MORE": {
+      const visibleCount = cloneMap(state.treeVisibleCount)
+      const current = visibleCount.get(action.nodeId) ?? 0
+      const increment = current > 0 ? current : MAX_VISIBLE_DATABASES
+      visibleCount.set(action.nodeId, current + increment)
+      debug(`[Reducer] TREE_LOAD_MORE for ${action.nodeId}: ${current} -> ${current + increment}`)
+      return { ...state, treeVisibleCount: visibleCount }
+    }
     case "CONSOLE_LOG": {
       const entries = [...state.consoleEntries, action.entry]
       if (entries.length > MAX_CONSOLE_ENTRIES) {
@@ -284,6 +295,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     treeSelected: null,
     treeLoading: new Set<string>(),
     treeChildren: new Map<string, TreeNode[]>(),
+    treeVisibleCount: new Map<string, number>(),
     tabs: [],
     activeTabId: null,
     tabData: new Map<string, TabData>(),
@@ -585,6 +597,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [state.connections, log]
   )
 
+  const loadMoreChildren = useCallback(
+    (nodeId: string) => {
+      debug(`[loadMoreChildren] Loading more for node ${nodeId}`)
+      dispatch({ type: "TREE_LOAD_MORE", nodeId })
+    },
+    []
+  )
+
   return (
     <AppContext.Provider
       value={{
@@ -605,6 +625,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         prevTab,
         fetchTabData,
         setVisibleDatabases,
+        loadMoreChildren,
         log,
       }}
     >

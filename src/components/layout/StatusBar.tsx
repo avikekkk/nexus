@@ -29,6 +29,8 @@ function getShortcuts(focusZone: FocusZone, showQueryLog: boolean): Shortcut[] {
       { key: "Enter", desc: "Open/Expand" },
       { key: "h/l", desc: "Collapse/Expand" },
       { key: "e", desc: "Pick DBs" },
+      { key: "s", desc: "Search" },
+      { key: "m", desc: "Load More" },
       { key: "d", desc: "Disconnect" },
       { key: "x", desc: "Remove" },
     ],

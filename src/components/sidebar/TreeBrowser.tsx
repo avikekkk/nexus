@@ -4,6 +4,7 @@ import type { ConnectionState } from "../../db/types.ts"
 const EXPANDED_ICON = "▾"
 const COLLAPSED_ICON = "▸"
 const LOADING_ICON = "◌"
+const MAX_VISIBLE_ITEMS = 20
 
 function formatCount(count?: number): string {
   if (count == null) return ""
@@ -14,7 +15,7 @@ function formatCount(count?: number): string {
 export interface FlatNode {
   id: string
   label: string
-  type: TreeNode["type"]
+  type: TreeNode["type"] | "more"
   depth: number
   isExpanded: boolean
   isLoading: boolean
@@ -23,12 +24,16 @@ export interface FlatNode {
   database?: string
   collection?: string
   count?: number
+  parentId?: string // for "more" nodes: the nodeId of the parent database
+  totalCount?: number // for "more" nodes
+  visibleCount?: number // for "more" nodes
 }
 
 interface TreeStateSlice {
   treeExpanded: Set<string>
   treeLoading: Set<string>
   treeChildren: Map<string, TreeNode[]>
+  treeVisibleCount: Map<string, number>
 }
 
 export function flattenTreeNodes(connection: ConnectionState, treeState: TreeStateSlice): FlatNode[] {
@@ -88,7 +93,12 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
           database: db.database,
         })
       } else {
-        for (const col of children) {
+        // Paginate collections/keys/tables
+        const visibleCount = treeState.treeVisibleCount.get(dbNodeId) ?? MAX_VISIBLE_ITEMS
+        const visibleChildren = children.slice(0, visibleCount)
+        const hasMore = children.length > visibleCount
+
+        for (const col of visibleChildren) {
           flat.push({
             id: col.id,
             label: col.label,
@@ -103,7 +113,8 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
             count: col.count,
           })
         }
-        if (children.length === 0) {
+
+        if (children.length === 0 && !hasMore) {
           flat.push({
             id: `${dbNodeId}/__empty`,
             label: "(empty)",
@@ -114,6 +125,23 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
             hasChildren: false,
             connectionId: connId,
             database: db.database,
+          })
+        }
+
+        if (hasMore) {
+          flat.push({
+            id: `${dbNodeId}/__more`,
+            label: `+${children.length - visibleCount} more`,
+            type: "more",
+            depth: 2,
+            isExpanded: false,
+            isLoading: false,
+            hasChildren: false,
+            connectionId: connId,
+            database: db.database,
+            parentId: dbNodeId,
+            totalCount: children.length,
+            visibleCount,
           })
         }
       }
@@ -141,6 +169,19 @@ export function TreeRow({
   const indent = "  ".repeat(node.depth)
   const bg = isSelected ? "#283457" : "transparent"
   const fg = isSelected ? "#c0caf5" : "#a9b1d6"
+
+  // Render "more" row differently
+  if (node.type === "more") {
+    return (
+      <box flexDirection="row" paddingX={1} backgroundColor={bg}>
+        <text fg={fg}>
+          {indent}
+          <span fg="#7aa2f7">… +{node.totalCount! - node.visibleCount!} more</span>
+          <span fg="#565f89"> [m] load</span>
+        </text>
+      </box>
+    )
+  }
 
   let icon: string
   if (node.isLoading) {
