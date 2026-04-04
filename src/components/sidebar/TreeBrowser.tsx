@@ -12,6 +12,11 @@ function formatCount(count?: number): string {
   return ` ${count}`
 }
 
+export function formatMoreLabel(totalCount?: number, visibleCount?: number): string {
+  if (totalCount == null || visibleCount == null) return "more"
+  return `+${Math.max(0, totalCount - visibleCount)} more`
+}
+
 export interface FlatNode {
   id: string
   label: string
@@ -34,6 +39,7 @@ interface TreeStateSlice {
   treeLoading: Set<string>
   treeChildren: Map<string, TreeNode[]>
   treeVisibleCount: Map<string, number>
+  treeNextCursor: Map<string, string | null>
 }
 
 export function flattenTreeNodes(connection: ConnectionState, treeState: TreeStateSlice): FlatNode[] {
@@ -96,7 +102,8 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
         // Paginate collections/keys/tables
         const visibleCount = treeState.treeVisibleCount.get(dbNodeId) ?? MAX_VISIBLE_ITEMS
         const visibleChildren = children.slice(0, visibleCount)
-        const hasMore = children.length > visibleCount
+        const nextCursor = treeState.treeNextCursor.get(dbNodeId) ?? null
+        const hasMore = children.length > visibleCount || nextCursor !== null
 
         for (const col of visibleChildren) {
           flat.push({
@@ -140,7 +147,7 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
             connectionId: connId,
             database: db.database,
             parentId: dbNodeId,
-            totalCount: children.length,
+            totalCount: children.length > visibleCount ? children.length : undefined,
             visibleCount,
           })
         }
@@ -176,7 +183,7 @@ export function TreeRow({
       <box flexDirection="row" paddingX={1} backgroundColor={bg}>
         <text fg={fg}>
           {indent}
-          <span fg="#7aa2f7">… +{node.totalCount! - node.visibleCount!} more</span>
+          <span fg="#7aa2f7">… {formatMoreLabel(node.totalCount, node.visibleCount)}</span>
           <span fg="#565f89"> [m] load</span>
         </text>
       </box>

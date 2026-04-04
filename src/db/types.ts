@@ -20,6 +20,11 @@ export interface CollectionInfo {
   count?: number
 }
 
+export interface CollectionPage {
+  items: CollectionInfo[]
+  nextCursor: string | null
+}
+
 export interface ColumnDef {
   name: string
   type: string
@@ -51,6 +56,7 @@ export interface DbDriver {
   isConnected(): boolean
   listDatabases(): Promise<string[]>
   listCollections(db: string): Promise<CollectionInfo[]>
+  listCollectionsPage?(db: string, cursor?: string | null, limit?: number): Promise<CollectionPage>
   query(opts: QueryOpts): Promise<QueryResult>
 }
 

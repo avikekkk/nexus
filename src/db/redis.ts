@@ -1,20 +1,49 @@
 import Redis from "ioredis"
-import type { ConnectionConfig, DbDriver, QueryOpts, QueryResult, CollectionInfo, ColumnDef } from "./types.ts"
+import type { DbDriver, CollectionInfo, ColumnDef, CollectionPage } from "./types.ts"
+import { debug } from "../utils/debug.ts"
+
+const REDIS_SCAN_COUNT = 100
+const REDIS_SIDEBAR_PAGE_SIZE = 20
+
+interface ScanRedisKeysOptions {
+  cursor?: string
+  limit?: number
+  count?: number
+}
+
+function hasRedisGlob(pattern: string): boolean {
+  return /[*?\[\]]/.test(pattern)
+}
+
+export function buildRedisCollectionInfos(keys: string[]): CollectionInfo[] {
+  return keys.map((key) => ({ name: key, type: "key", count: 1 }))
+}
+
+async function scanRedisKeys(
+  redis: Redis,
+  pattern: string,
+  { cursor = "0", limit, count = REDIS_SCAN_COUNT }: ScanRedisKeysOptions = {}
+): Promise<{ keys: string[]; nextCursor: string | null }> {
+  const keys: string[] = []
+  let nextCursor = cursor
+
+  do {
+    const [scannedCursor, batch] = await redis.scan(nextCursor, "MATCH", pattern, "COUNT", count)
+    nextCursor = scannedCursor
+
+    for (const key of batch) {
+      keys.push(key)
+      if (limit != null && keys.length >= limit) {
+        return { keys, nextCursor: nextCursor === "0" ? null : nextCursor }
+      }
+    }
+  } while (nextCursor !== "0")
+
+  return { keys, nextCursor: null }
+}
 
 export function createRedisDriver(): DbDriver {
   let redis: Redis | null = null
-
-  async function scanKeys(pattern: string, count: number = 100): Promise<string[]> {
-    if (!redis) throw new Error("Not connected")
-    const keys: string[] = []
-    let cursor = "0"
-    do {
-      const [nextCursor, batch] = await redis.scan(cursor, "MATCH", pattern, "COUNT", count)
-      cursor = nextCursor
-      keys.push(...batch)
-    } while (cursor !== "0")
-    return keys
-  }
 
   async function getKeyValue(key: string): Promise<{ type: string; value: string }> {
     if (!redis) throw new Error("Not connected")
@@ -83,29 +112,30 @@ export function createRedisDriver(): DbDriver {
         const count = parseInt(result[1] ?? "16", 10)
         return Array.from({ length: count }, (_, i) => String(i))
       } catch {
+        debug("[redis.listDatabases] CONFIG GET failed, falling back to 16 databases")
         return Array.from({ length: 16 }, (_, i) => String(i))
       }
+    },
+
+    async listCollectionsPage(db, cursor = null, limit = REDIS_SIDEBAR_PAGE_SIZE): Promise<CollectionPage> {
+      if (!redis) throw new Error("Not connected")
+
+      const selectedDb = parseInt(db, 10)
+      const startCursor = cursor ?? "0"
+
+      await redis.select(selectedDb)
+
+      const page = await scanRedisKeys(redis, "*", { cursor: startCursor, limit })
+      const items = buildRedisCollectionInfos(page.keys)
+
+      return { items, nextCursor: page.nextCursor }
     },
 
     async listCollections(db) {
       if (!redis) throw new Error("Not connected")
       await redis.select(parseInt(db, 10))
-      const keys = await scanKeys("*")
-
-      const groups = new Map<string, number>()
-      for (const key of keys) {
-        const colonIdx = key.indexOf(":")
-        const prefix = colonIdx > 0 ? key.slice(0, colonIdx) : key
-        groups.set(prefix, (groups.get(prefix) ?? 0) + 1)
-      }
-
-      const infos: CollectionInfo[] = []
-      for (const [name, count] of groups) {
-        const hasSubkeys = keys.some((k) => k.startsWith(name + ":"))
-        infos.push({ name, type: hasSubkeys ? "keyspace" : "key", count })
-      }
-
-      return infos.sort((a, b) => a.name.localeCompare(b.name))
+      const { keys } = await scanRedisKeys(redis, "*")
+      return buildRedisCollectionInfos(keys)
     },
 
     async query(opts) {
@@ -114,11 +144,21 @@ export function createRedisDriver(): DbDriver {
 
       const start = performance.now()
       const pattern = opts.collection || "*"
-      const allKeys = await scanKeys(pattern)
 
       const limit = opts.limit ?? 50
       const offset = opts.offset ?? 0
-      const pagedKeys = allKeys.slice(offset, offset + limit)
+      let totalCount = 0
+      let pagedKeys: string[] = []
+
+      if (!hasRedisGlob(pattern)) {
+        const exists = await redis.exists(pattern)
+        totalCount = exists > 0 ? 1 : 0
+        pagedKeys = offset === 0 && exists > 0 ? [pattern] : []
+      } else {
+        const { keys: allKeys } = await scanRedisKeys(redis, pattern)
+        totalCount = allKeys.length
+        pagedKeys = allKeys.slice(offset, offset + limit)
+      }
 
       const columns: ColumnDef[] = [
         { name: "key", type: "string" },
@@ -137,7 +177,7 @@ export function createRedisDriver(): DbDriver {
       const duration = Math.round(performance.now() - start)
       const queryStr = `SCAN 0 MATCH ${pattern} COUNT 100`
 
-      return { columns, rows, totalCount: allKeys.length, duration, query: queryStr }
+      return { columns, rows, totalCount, duration, query: queryStr }
     },
   }
 }

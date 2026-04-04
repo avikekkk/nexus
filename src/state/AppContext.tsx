@@ -31,6 +31,7 @@ interface AppState {
   treeLoading: Set<string>
   treeChildren: Map<string, TreeNode[]>
   treeVisibleCount: Map<string, number> // nodeId -> visible item count for pagination
+  treeNextCursor: Map<string, string | null>
   tabs: Tab[]
   activeTabId: string | null
   tabData: Map<string, TabData>
@@ -53,6 +54,7 @@ type AppAction =
   | { type: "TREE_SET_SELECTED"; nodeId: string | null }
   | { type: "TREE_SET_LOADING"; nodeId: string; loading: boolean }
   | { type: "TREE_SET_CHILDREN"; nodeId: string; children: TreeNode[] }
+  | { type: "TREE_SET_NEXT_CURSOR"; nodeId: string; cursor: string | null }
   | { type: "TREE_CLEAR_CONNECTION"; connectionId: string }
   | { type: "OPEN_TAB"; tab: Tab }
   | { type: "CLOSE_TAB"; tabId: string }
@@ -163,10 +165,16 @@ function reducer(state: AppState, action: AppAction): AppState {
       children.set(action.nodeId, action.children)
       return { ...state, treeChildren: children }
     }
+    case "TREE_SET_NEXT_CURSOR": {
+      const nextCursor = cloneMap(state.treeNextCursor)
+      nextCursor.set(action.nodeId, action.cursor)
+      return { ...state, treeNextCursor: nextCursor }
+    }
     case "TREE_CLEAR_CONNECTION": {
       const expanded = cloneSet(state.treeExpanded)
       const loading = cloneSet(state.treeLoading)
       const children = cloneMap(state.treeChildren)
+      const nextCursor = cloneMap(state.treeNextCursor)
       for (const key of expanded) {
         if (key.startsWith(action.connectionId)) expanded.delete(key)
       }
@@ -176,7 +184,10 @@ function reducer(state: AppState, action: AppAction): AppState {
       for (const key of children.keys()) {
         if (key.startsWith(action.connectionId)) children.delete(key)
       }
-      return { ...state, treeExpanded: expanded, treeLoading: loading, treeChildren: children }
+      for (const key of nextCursor.keys()) {
+        if (key.startsWith(action.connectionId)) nextCursor.delete(key)
+      }
+      return { ...state, treeExpanded: expanded, treeLoading: loading, treeChildren: children, treeNextCursor: nextCursor }
     }
 
     case "OPEN_TAB": {
@@ -240,32 +251,25 @@ function reducer(state: AppState, action: AppAction): AppState {
       return { ...state, tabData }
     }
     case "SET_ALL_DATABASES": {
-      debug(`[Reducer] SET_ALL_DATABASES for ${action.connectionId}, databases:`, action.databases.length)
       const allDatabases = cloneMap(state.allDatabases)
       allDatabases.set(action.connectionId, action.databases)
       // Only set visible databases if they haven't been set yet (to preserve saved preferences)
       const visibleDatabases = cloneMap(state.visibleDatabases)
       if (!visibleDatabases.has(action.connectionId)) {
-        debug(`[Reducer] SET_ALL_DATABASES: No saved visible databases, setting default first ${MAX_VISIBLE_DATABASES}`)
         visibleDatabases.set(action.connectionId, action.databases.slice(0, MAX_VISIBLE_DATABASES))
-      } else {
-        debug(`[Reducer] SET_ALL_DATABASES: Preserving existing visible databases (${visibleDatabases.get(action.connectionId)?.length})`)
       }
       return { ...state, allDatabases, visibleDatabases }
     }
     case "SET_VISIBLE_DATABASES": {
-      debug(`[Reducer] SET_VISIBLE_DATABASES for ${action.connectionId}, databases:`, action.databases)
       const visibleDatabases = cloneMap(state.visibleDatabases)
       visibleDatabases.set(action.connectionId, action.databases)
-      debug(`[Reducer] visibleDatabases map now has ${visibleDatabases.size} entries`)
-      
+
       // Track if this is user-selected
       const userSelectedDatabases = cloneSet(state.userSelectedDatabases)
       if (action.userSelected) {
         userSelectedDatabases.add(action.connectionId)
-        debug(`[Reducer] Marking ${action.connectionId} as user-selected`)
       }
-      
+
       return { ...state, visibleDatabases, userSelectedDatabases }
     }
     case "TREE_LOAD_MORE": {
@@ -273,7 +277,6 @@ function reducer(state: AppState, action: AppAction): AppState {
       const current = visibleCount.get(action.nodeId) ?? 0
       const increment = current > 0 ? current : MAX_VISIBLE_DATABASES
       visibleCount.set(action.nodeId, current + increment)
-      debug(`[Reducer] TREE_LOAD_MORE for ${action.nodeId}: ${current} -> ${current + increment}`)
       return { ...state, treeVisibleCount: visibleCount }
     }
     case "CONSOLE_LOG": {
@@ -305,6 +308,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     treeLoading: new Set<string>(),
     treeChildren: new Map<string, TreeNode[]>(),
     treeVisibleCount: new Map<string, number>(),
+    treeNextCursor: new Map<string, string | null>(),
     tabs: [],
     activeTabId: null,
     tabData: new Map<string, TabData>(),
@@ -316,14 +320,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadConnections().then((configs) => {
-      debug("[AppContext] Loaded connections:", JSON.stringify(configs, null, 2))
       if (configs.length > 0) {
         dispatch({ type: "SET_CONNECTIONS", configs })
         // Initialize visibleDatabases from saved configs
         configs.forEach((config) => {
-          debug(`[AppContext] Checking config ${config.id} (${config.name}), visibleDatabases:`, config.visibleDatabases)
           if (config.visibleDatabases) {
-            debug(`[AppContext] Dispatching SET_VISIBLE_DATABASES for ${config.id} with ${config.visibleDatabases.length} databases`)
             dispatch({ type: "SET_VISIBLE_DATABASES", connectionId: config.id, databases: config.visibleDatabases, userSelected: true })
           }
         })
@@ -447,18 +448,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           driver
             .listDatabases()
             .then((dbs) => {
-              debug(`[toggleExpand] Fetched ${dbs.length} databases for ${connectionId}`)
               dispatch({ type: "SET_ALL_DATABASES", connectionId, databases: dbs })
-              
+
               // Check if we have saved visible databases
               const savedVisible = state.visibleDatabases.get(connectionId)
-              debug(`[toggleExpand] Saved visible databases for ${connectionId}:`, savedVisible)
-              
+
               const visible = savedVisible && savedVisible.length > 0 
                 ? savedVisible 
                 : dbs.slice(0, MAX_VISIBLE_DATABASES)
-              debug(`[toggleExpand] Using visible databases (${visible.length}):`, visible)
-              
+
               const nodes: TreeNode[] = visible.map((db) => ({
                 id: nodeId(connectionId, db),
                 label: db,
@@ -484,10 +482,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const dbType = conn?.config.type ?? "unknown"
           const itemType = dbType === "mysql" ? "tables" : dbType === "redis" ? "keys" : "collections"
           log("info", "connection", `Fetching ${itemType} from database: ${database}...`)
-          driver
-            .listCollections(database)
+          const listCollections = driver.listCollectionsPage
+            ? driver.listCollectionsPage(database)
+            : driver.listCollections(database).then((items) => ({ items, nextCursor: null }))
+
+          listCollections
             .then((cols) => {
-              const nodes: TreeNode[] = cols.map((col) => ({
+              const nodes: TreeNode[] = cols.items.map((col) => ({
                 id: nodeId(connectionId, database, col.name),
                 label: col.name,
                 type: "collection" as const,
@@ -497,10 +498,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 count: col.count,
               }))
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: nodes })
-              log("info", "connection", `Accessed database: ${database} (${cols.length} ${itemType})`)
+              dispatch({ type: "TREE_SET_NEXT_CURSOR", nodeId: nid, cursor: cols.nextCursor })
+              log("info", "connection", `Accessed database: ${database} (${cols.items.length} ${itemType})`)
             })
             .catch((e) => {
+              debug(`[toggleExpand] Failed loading ${itemType} connection=${connectionId} database=${database}:`, e)
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: [] })
+              dispatch({ type: "TREE_SET_NEXT_CURSOR", nodeId: nid, cursor: null })
               const msg = e instanceof Error ? e.message : String(e)
               log("error", "query", `Failed to list ${itemType} in ${database}: ${msg}`)
             })
@@ -594,7 +598,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setVisibleDatabases = useCallback(
     (connectionId: string, databases: string[]) => {
-      debug(`[setVisibleDatabases] Called for ${connectionId} with ${databases.length} databases:`, databases)
       const conn = state.connections.find((c) => c.config.id === connectionId)
       if (conn) {
         log("info", "connection", `Selected ${databases.length} database(s) for ${conn.config.name}`)
@@ -609,25 +612,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
         connectionId,
         database: db,
       }))
-      debug(`[setVisibleDatabases] Setting tree children for ${connNid} with ${nodes.length} nodes`)
       dispatch({ type: "TREE_SET_CHILDREN", nodeId: connNid, children: nodes })
-      
+
       // Persist to disk
       const updatedConnections = state.connections.map((c) =>
         c.config.id === connectionId ? { ...c, config: { ...c.config, visibleDatabases: databases } } : c
       )
-      debug(`[setVisibleDatabases] Persisting to disk, updated connection visibleDatabases:`, updatedConnections.find(c => c.config.id === connectionId)?.config.visibleDatabases)
       saveConnections(updatedConnections.map((c) => c.config))
     },
     [state.connections, log]
   )
 
   const loadMoreChildren = useCallback(
-    (nodeId: string) => {
-      debug(`[loadMoreChildren] Loading more for node ${nodeId}`)
-      dispatch({ type: "TREE_LOAD_MORE", nodeId })
+    (treeNodeId: string) => {
+      const [connectionId, ...databaseParts] = treeNodeId.split("/")
+      if (!connectionId) return
+
+      const database = databaseParts.join("/")
+      const conn = state.connections.find((c) => c.config.id === connectionId)
+      const driver = connectionId ? driverMap.get(connectionId) : undefined
+      const nextCursor = state.treeNextCursor.get(treeNodeId)
+
+      if (database && driver?.listCollectionsPage && nextCursor) {
+        const existingChildren = state.treeChildren.get(treeNodeId) ?? []
+        const itemType = conn?.config.type === "redis" ? "keys" : "collections"
+
+        dispatch({ type: "TREE_SET_LOADING", nodeId: treeNodeId, loading: true })
+
+        driver
+          .listCollectionsPage(database, nextCursor, 20)
+          .then((page) => {
+            const nextNodes: TreeNode[] = page.items.map((col) => ({
+              id: nodeId(connectionId, database, col.name),
+              label: col.name,
+              type: "collection" as const,
+              connectionId,
+              database,
+              collection: col.name,
+              count: col.count,
+            }))
+            const mergedChildren = [...existingChildren, ...nextNodes]
+
+            dispatch({ type: "TREE_SET_CHILDREN", nodeId: treeNodeId, children: mergedChildren })
+            dispatch({ type: "TREE_SET_NEXT_CURSOR", nodeId: treeNodeId, cursor: page.nextCursor })
+            log("info", "connection", `Loaded ${nextNodes.length} more ${itemType} from database ${database}`)
+          })
+          .catch((e) => {
+            debug(`[loadMoreChildren] Failed next page connection=${connectionId} database=${database}:`, e)
+            const msg = e instanceof Error ? e.message : String(e)
+            log("error", "query", `Failed to load more items in ${database}: ${msg}`)
+          })
+          .finally(() => {
+            dispatch({ type: "TREE_SET_LOADING", nodeId: treeNodeId, loading: false })
+          })
+
+        return
+      }
+
+      dispatch({ type: "TREE_LOAD_MORE", nodeId: treeNodeId })
     },
-    []
+    [state.connections, state.treeChildren, state.treeNextCursor, log]
   )
 
   return (

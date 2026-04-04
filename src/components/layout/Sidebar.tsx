@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react"
 import { useKeyboard } from "@opentui/react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useApp } from "../../state/AppContext.tsx"
-import { flattenTreeNodes, TreeRow, type FlatNode } from "../sidebar/TreeBrowser.tsx"
+import { flattenTreeNodes, formatMoreLabel, TreeRow, type FlatNode } from "../sidebar/TreeBrowser.tsx"
 import { nodeId } from "../../state/tree.ts"
 import type { ConnectionStatus } from "../../db/types.ts"
 
@@ -43,7 +43,7 @@ function truncateName(name: string, maxLen: number): string {
 type RowItem =
   | { kind: "connection"; index: number; connectionId: string }
   | { kind: "tree"; node: FlatNode }
-  | { kind: "more"; connectionId: string; totalCount: number; visibleCount: number; parentType: "connection" | "database"; parentId: string }
+  | { kind: "more"; connectionId: string; totalCount?: number; visibleCount: number; parentType: "connection" | "database"; parentId: string }
 
 // Max rows to render in sidebar list (conservative estimate for typical terminal)
 const MAX_RENDER_ROWS = 30
@@ -71,6 +71,7 @@ export function Sidebar({
     treeLoading: state.treeLoading,
     treeChildren: state.treeChildren,
     treeVisibleCount: state.treeVisibleCount,
+    treeNextCursor: state.treeNextCursor,
   }
 
   // Build flat list of all visible rows
@@ -85,7 +86,7 @@ export function Sidebar({
             items.push({
               kind: "more",
               connectionId: node.connectionId,
-              totalCount: node.totalCount!,
+              totalCount: node.totalCount,
               visibleCount: node.visibleCount!,
               parentType: "database",
               parentId: node.parentId!,
@@ -119,6 +120,7 @@ export function Sidebar({
     state.treeLoading,
     state.treeChildren,
     state.treeVisibleCount,
+    state.treeNextCursor,
     state.allDatabases,
     state.visibleDatabases,
     state.userSelectedDatabases,
@@ -376,12 +378,11 @@ export function Sidebar({
               return <TreeRow key={row.node.id} node={row.node} isSelected={isSelected} maxWidth={width - 4} />
             }
 
-            const extra = row.totalCount - row.visibleCount
             const hint = row.parentType === "connection" ? "[e] pick" : "[m] load"
             return (
               <box key={`more-${row.parentId}`} paddingX={1} backgroundColor={bg}>
                 <text fg="#7aa2f7">
-                  {"    "}… +{extra} more <span fg="#565f89">{hint}</span>
+                  {"    "}… {formatMoreLabel(row.totalCount, row.visibleCount)} <span fg="#565f89">{hint}</span>
                 </text>
               </box>
             )
