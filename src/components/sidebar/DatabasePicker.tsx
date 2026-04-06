@@ -178,13 +178,13 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
 
   useKeyboard((key) => {
     debug(`[DatabasePicker] key pressed: name="${key.name}", searchMode=${searchMode}, ctrl=${key.ctrl}, meta=${key.meta}, activeTab=${activeTab}`)
-    
-    // Handle tab switching with [t] key only (not Tab key)
-    if (!searchMode && mode === "select" && key.name === "t" && !key.ctrl) {
+
+    // Tab key switches between Databases/Edit tabs (not in search mode)
+    if (!searchMode && mode === "select" && key.name === "tab" && !key.ctrl) {
       setActiveTab((tab) => (tab === "databases" ? "edit" : "databases"))
       return
     }
-    
+
     // If on edit tab, handle edit form keys
     if (activeTab === "edit") {
       if (key.name === "escape") {
@@ -193,19 +193,6 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       }
 
       const disabledFields = hasEditUrl ? new Set([3, 4, 5, 6]) : new Set<number>()
-
-      // Tab and Shift+Tab navigate form fields
-      if (key.name === "tab") {
-        setEditFocusIndex((i) => {
-          const dir = key.shift ? -1 : 1
-          let next = (i + dir + EDIT_FIELD_COUNT) % EDIT_FIELD_COUNT
-          while (disabledFields.has(next)) {
-            next = (next + dir + EDIT_FIELD_COUNT) % EDIT_FIELD_COUNT
-          }
-          return next
-        })
-        return
-      }
 
       // Arrow keys (up/down) navigate form fields
       if (key.name === "down") {
@@ -251,9 +238,9 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       }
 
       if (editFocusIndex === 1) {
-        if (key.name === "left" || key.name === "right" || key.name === "j" || key.name === "k") {
+        if (key.name === "left" || key.name === "right") {
           const currentIdx = DB_TYPES.findIndex((t) => t.value === editDbType)
-          const dir = key.name === "left" || key.name === "k" ? -1 : 1
+          const dir = key.name === "left" ? -1 : 1
           const nextIdx = (currentIdx + dir + DB_TYPES.length) % DB_TYPES.length
           const next = DB_TYPES[nextIdx]!
           setEditDbType(next.value)
@@ -292,6 +279,18 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
         return
       }
 
+      // Delete word: ctrl+backspace or ctrl+w
+      if ((key.name === "backspace" && key.ctrl) || (key.name === "w" && key.ctrl)) {
+        setSearchQuery((q) => {
+          const trimmed = q.trimEnd()
+          const lastSep = Math.max(trimmed.lastIndexOf(" "), trimmed.lastIndexOf(":"), trimmed.lastIndexOf("/"))
+          const newQuery = lastSep >= 0 ? q.slice(0, lastSep + 1) : ""
+          debug(`[DatabasePicker] delete-word: "${q}" -> "${newQuery}"`)
+          return newQuery
+        })
+        return
+      }
+
       // Handle backspace
       if (key.name === "backspace") {
         setSearchQuery((q) => {
@@ -302,8 +301,17 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
         return
       }
 
-      // Handle regular character input (single character, no modifiers)
-      if (key.name && key.name.length === 1 && !key.ctrl && !key.meta) {
+      // Ignore other ctrl/meta combos
+      if (key.ctrl || key.meta) return
+
+      // Handle space
+      if (key.name === "space") {
+        setSearchQuery((q) => q + " ")
+        return
+      }
+
+      // Handle regular character input (single printable character)
+      if (key.name && key.name.length === 1) {
         setSearchQuery((q) => {
           const newQuery = q + key.name
           debug(`[DatabasePicker] typing: "${q}" -> "${newQuery}"`)
@@ -536,7 +544,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
               <span fg="#565f89">[a]</span> Check/Uncheck All
             </text>
             <text fg="#414868">
-              <span fg="#565f89">[t]</span> Tab {"  "}
+              <span fg="#565f89">[Tab]</span> Edit {"  "}
               <span fg="#565f89">[/]</span> Search {"  "}
               <span fg="#565f89">[Esc]</span> Close
             </text>
@@ -684,22 +692,22 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
           <box flexDirection="row" gap={1} marginTop={1}>
             <text width={11}>{" "}</text>
             <box
-              width={30}
+              width={26}
               backgroundColor={editFocusIndex === 7 ? "#7aa2f7" : "#292e42"}
               justifyContent="center"
             >
-              <text fg={editFocusIndex === 7 ? "#1a1b26" : "#a9b1d6"}> Save Changes </text>
+              <text fg={editFocusIndex === 7 ? "#1a1b26" : "#a9b1d6"}> Save </text>
             </box>
           </box>
 
           {/* Hints */}
           <box paddingX={0} marginTop={1} flexDirection="column" flexShrink={0}>
             <text fg="#414868">
-              <span fg="#565f89">[Tab/↑↓]</span> Navigate {"  "}
+              <span fg="#565f89">[↑↓]</span> Navigate {"  "}
               <span fg="#565f89">[Enter]</span> Save
             </text>
             <text fg="#414868">
-              <span fg="#565f89">[t]</span> Switch Tab {"  "}
+              <span fg="#565f89">[Tab]</span> Switch Tab {"  "}
               <span fg="#565f89">[Esc]</span> Cancel
             </text>
           </box>

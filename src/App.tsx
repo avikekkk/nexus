@@ -171,10 +171,8 @@ export function App() {
         const conn = state.connections.find((c) => c.config.id === databasePickerConnectionId)
         if (!conn) return null
         const pickerWidth = 44
-        const pickerAllDbs = state.allDatabases.get(databasePickerConnectionId) ?? []
-        const pickerHeight = Math.min(pickerAllDbs.length + 6, 20)
         const pickerLeft = Math.max(0, Math.floor((width - pickerWidth) / 2))
-        const pickerTop = Math.max(0, Math.floor((height - pickerHeight) / 2))
+        const pickerTop = Math.max(0, Math.floor((height - 22) / 2))
         return (
           <>
             <box
@@ -223,7 +221,10 @@ export function App() {
               mode="search"
               left={dialogLeft}
               top={dialogTop}
-              onClose={() => setSearchDialogDb(null)}
+              onClose={() => {
+                setSearchDialogDb(null)
+                setFocusZone("main")
+              }}
             />
           </>
         )

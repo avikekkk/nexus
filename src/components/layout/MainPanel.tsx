@@ -78,11 +78,13 @@ export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
         ) : (
           tabs.map((tab) => {
             const isActive = tab.id === activeTabId
+            const maxTabLen = 24
+            const label = tab.label.length > maxTabLen ? tab.label.slice(0, maxTabLen - 1) + "…" : tab.label
             if (isActive) {
               return (
                 <text key={tab.id} bg="#292e42">
                   <span fg="#7aa2f7">▎</span>
-                  <span fg="#c0caf5">{tab.label}</span>
+                  <span fg="#c0caf5">{label}</span>
                   <span fg="#414868">▕</span>
                 </text>
               )
@@ -90,7 +92,7 @@ export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
             return (
               <text key={tab.id}>
                 <span fg="#292e42">▎</span>
-                <span fg="#565f89">{tab.label}</span>
+                <span fg="#565f89">{label}</span>
                 <span fg="#292e42">▕</span>
               </text>
             )
