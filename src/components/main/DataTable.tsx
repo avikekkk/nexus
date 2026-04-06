@@ -39,7 +39,8 @@ const MIN_COL_WIDTH = 6
 const MAX_COL_WIDTH = 40
 const SAMPLE_ROWS = 20
 const ROW_NUM_WIDTH = 4
-const COL_SEPARATOR = " │ "
+const COL_SEPARATOR = "│"
+const COL_PADDING = " "
 
 function getValueType(value: unknown): keyof typeof COLORS {
   if (value === null || value === undefined) return "null"
@@ -136,13 +137,13 @@ export function DataTable({
   // Calculate which columns are visible based on horizontal scroll
   // This is purely viewport-based - doesn't auto-adjust for selection
   const visibleColumns = useMemo(() => {
-    const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length
+    const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length + (COL_PADDING.length * 2)
     let usedWidth = fixedOverhead
     const visible: number[] = []
 
     for (let i = viewportColOffset; i < columns.length; i++) {
       const colWidth = columnWidths[i]!
-      const sepWidth = visible.length > 0 ? COL_SEPARATOR.length : 0
+      const sepWidth = visible.length > 0 ? COL_SEPARATOR.length + (COL_PADDING.length * 2) : 0
       // Always include at least one column; include subsequent ones if ≥1 char fits
       if (availableWidth - usedWidth - sepWidth < 1 && visible.length > 0) break
       usedWidth += colWidth + sepWidth
@@ -158,11 +159,11 @@ export function DataTable({
   // past the end and eliminates the large trailing gap.
   const maxColOffset = useMemo(() => {
     if (columns.length === 0) return 0
-    const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length
+    const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length + (COL_PADDING.length * 2)
     let w = fixedOverhead + columnWidths[columns.length - 1]!
     let startCol = columns.length - 1
     for (let i = columns.length - 2; i >= 0; i--) {
-      const needed = columnWidths[i]! + COL_SEPARATOR.length
+      const needed = columnWidths[i]! + COL_SEPARATOR.length + (COL_PADDING.length * 2)
       if (w + needed > availableWidth) break
       w += needed
       startCol = i
@@ -178,10 +179,10 @@ export function DataTable({
   // The last visible column may be clipped to the remaining space (partial column at right edge)
   const lastVisibleDisplayWidth = useMemo(() => {
     if (visibleColumns.length === 0) return 0
-    const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length
+    const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length + (COL_PADDING.length * 2)
     let usedWidth = fixedOverhead
     for (let vi = 0; vi < visibleColumns.length - 1; vi++) {
-      usedWidth += columnWidths[visibleColumns[vi]!]! + COL_SEPARATOR.length
+      usedWidth += columnWidths[visibleColumns[vi]!]! + COL_SEPARATOR.length + (COL_PADDING.length * 2)
     }
     const remaining = availableWidth - usedWidth
     const lastColIdx = visibleColumns[visibleColumns.length - 1]!
@@ -218,7 +219,7 @@ export function DataTable({
   const ensureColVisible = useCallback(
     (newCol: number) => {
       // Check if newCol is outside current visible range
-      const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length
+      const fixedOverhead = 2 + ROW_NUM_WIDTH + COL_SEPARATOR.length + (COL_PADDING.length * 2)
 
       setViewportColOffset((prev) => {
         // Calculate visible columns from current offset
@@ -228,7 +229,7 @@ export function DataTable({
 
         for (let i = prev; i < columns.length; i++) {
           const colWidth = columnWidths[i]!
-          const sepWidth = i > prev ? COL_SEPARATOR.length : 0
+          const sepWidth = i > prev ? COL_SEPARATOR.length + (COL_PADDING.length * 2) : 0
           if (usedWidth + colWidth + sepWidth > availableWidth && i > prev) break
           usedWidth += colWidth + sepWidth
           lastVisible = i
@@ -241,7 +242,7 @@ export function DataTable({
           let w = fixedOverhead + columnWidths[newCol]!
           let startCol = newCol
           for (let i = newCol - 1; i >= 0; i--) {
-            const needed = columnWidths[i]! + COL_SEPARATOR.length
+            const needed = columnWidths[i]! + COL_SEPARATOR.length + (COL_PADDING.length * 2)
             if (w + needed > availableWidth) break
             w += needed
             startCol = i
@@ -399,7 +400,8 @@ export function DataTable({
   const headerParts: any[] = [
     <span key="__rownum" fg={COLORS.dim}>
       {padCell("#", ROW_NUM_WIDTH)}
-      {COL_SEPARATOR}
+      {COL_PADDING}
+      <span fg={COLORS.separator}>{COL_SEPARATOR}</span>
     </span>,
   ]
   for (let vi = 0; vi < visibleColumns.length; vi++) {
@@ -408,8 +410,12 @@ export function DataTable({
     const w = vi === visibleColumns.length - 1 ? lastVisibleDisplayWidth : columnWidths[colIdx]!
     const text = padCell(formatCellValue(col.name, w), w)
     headerParts.push(
-      <span key={col.name} fg={COLORS.header}>
-        {text}
+      <span key={col.name}>
+        <span fg={COLORS.header}>
+          {COL_PADDING}
+          {text}
+          {COL_PADDING}
+        </span>
         {vi < visibleColumns.length - 1 ? <span fg={COLORS.separator}>{COL_SEPARATOR}</span> : ""}
       </span>
     )
@@ -435,8 +441,9 @@ export function DataTable({
     const isSelectedRow = actualRowIdx === selectedRow
 
     const cellParts: any[] = [
-      <span key="__rownum" fg={COLORS.rowNum}>
-        {rowNumStr(actualRowIdx)}
+      <span key="__rownum">
+        <span fg={COLORS.rowNum}>{rowNumStr(actualRowIdx)}</span>
+        {COL_PADDING}
         <span fg={COLORS.separator}>{COL_SEPARATOR}</span>
       </span>,
     ]
@@ -452,9 +459,17 @@ export function DataTable({
       const color = COLORS[valueType]
       const isSelectedCell = isSelectedRow && colIdx === selectedCol
 
+      const cellBg = isSelectedCell ? COLORS.selectedCell : undefined
+      
+      // Background covers: padding + content + padding (between separators)
+      // Separator is rendered outside the background
       cellParts.push(
-        <span key={col.name} fg={color} bg={isSelectedCell ? COLORS.selectedCell : undefined}>
-          {padded}
+        <span key={col.name}>
+          <span bg={cellBg}>
+            {COL_PADDING}
+            <span fg={color}>{padded}</span>
+            {COL_PADDING}
+          </span>
           {vi < visibleColumns.length - 1 ? <span fg={COLORS.separator}>{COL_SEPARATOR}</span> : ""}
         </span>
       )
