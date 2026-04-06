@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useKeyboard } from "@opentui/react"
 import { useApp } from "../../state/AppContext.tsx"
 import { debug } from "../../utils/debug.ts"
-import { nodeId } from "../../state/tree.ts"
-import type { DbType } from "../../db/types.ts"
+import type { DbType, CollectionInfo } from "../../db/types.ts"
 import { DEFAULT_PORTS } from "../../db/types.ts"
 import { parseConnectionUrl } from "../../db/url.ts"
 import { getRedisTypeIcon } from "../../utils/redisIcons.ts"
@@ -19,8 +18,11 @@ interface DatabasePickerProps {
   onClose: () => void
 }
 
+const SEARCH_INITIAL_LIMIT = 200
+const SEARCH_DEBOUNCE_MS = 300
+
 export function DatabasePicker({ connectionId, connectionName, database, mode = "select", width, left, top, onClose }: DatabasePickerProps) {
-  const { state, setVisibleDatabases, openCollection, updateConnection } = useApp()
+  const { state, setVisibleDatabases, openCollection, updateConnection, getDriver, log } = useApp()
 
   // Tab state: 'databases' or 'edit'
   const [activeTab, setActiveTab] = useState<"databases" | "edit">("databases")
@@ -29,14 +31,18 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   const allDbs = state.allDatabases.get(connectionId) ?? []
   const visibleDbs = state.visibleDatabases.get(connectionId) ?? []
 
-  // For "search" mode: list of collections/keys/tables in a database
-  const dbNodeId = database ? nodeId(connectionId, database) : null
-  const dbChildren = dbNodeId ? (state.treeChildren.get(dbNodeId) ?? []) : []
-
   const [selected, setSelected] = useState<Set<string>>(() => (mode === "select" ? new Set(visibleDbs) : new Set()))
   const [cursorIndex, setCursorIndex] = useState(0)
   const [searchMode, setSearchMode] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+
+  // Server-side search state (for search mode)
+  const [searchResults, setSearchResults] = useState<CollectionInfo[]>([])
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchTotalCount, setSearchTotalCount] = useState<number | undefined>()
+  const [searchNextCursor, setSearchNextCursor] = useState<string | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchIdRef = useRef(0) // to discard stale responses
 
   // Edit form state
   const currentConnection = state.connections.find((c) => c.config.id === connectionId)
@@ -90,27 +96,68 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
     setEditPassword(p.password ?? "")
   }, [editUrl, editDbType, hasEditUrl])
 
-  // Build the full item list based on mode
+  // Server-side search for search mode
+  const doSearch = useCallback((query: string, cursor: string | null = null, append = false) => {
+    const driver = getDriver(connectionId)
+    if (!driver?.searchCollectionsPage || !database) return
+
+    const id = ++searchIdRef.current
+    setSearchLoading(true)
+    debug(`[DatabasePicker] doSearch id=${id} query="${query}" cursor=${cursor} append=${append}`)
+
+    driver.searchCollectionsPage(database, query, cursor, SEARCH_INITIAL_LIMIT)
+      .then((page) => {
+        if (searchIdRef.current !== id) return // stale
+        debug(`[DatabasePicker] doSearch id=${id} result: ${page.items.length} items, total=${page.totalCount}, nextCursor=${page.nextCursor}`)
+        setSearchResults(prev => append ? [...prev, ...page.items] : page.items)
+        setSearchTotalCount(page.totalCount)
+        setSearchNextCursor(page.nextCursor)
+      })
+      .catch((e) => {
+        if (searchIdRef.current !== id) return
+        const msg = e instanceof Error ? e.message : String(e)
+        log("error", "query", `Search failed: ${msg}`)
+      })
+      .finally(() => {
+        if (searchIdRef.current !== id) return
+        setSearchLoading(false)
+      })
+  }, [connectionId, database, getDriver, log])
+
+  // Initial load when search dialog opens
+  useEffect(() => {
+    if (isSearch) {
+      doSearch("")
+    }
+  }, [isSearch]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced server-side search on query change
+  useEffect(() => {
+    if (!isSearch) return
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      setCursorIndex(0)
+      doSearch(searchQuery)
+    }, SEARCH_DEBOUNCE_MS)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [searchQuery]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Build the display item list
   const allItems = useMemo(() => {
     if (isSearch) {
-      return dbChildren.map((child) => child.label)
+      return searchResults.map((r) => r.name)
     }
     return allDbs
-  }, [isSearch, dbChildren, allDbs])
+  }, [isSearch, searchResults, allDbs])
 
   const filteredItems = useMemo(() => {
-    if (!searchQuery) {
-      debug(`[DatabasePicker] filteredItems: no query, returning all ${allItems.length} items`)
-      return allItems
-    }
+    if (isSearch) return allItems // already filtered server-side
+    if (!searchQuery) return allItems
     const query = searchQuery.toLowerCase()
-    const filtered = allItems.filter((item) => item.toLowerCase().includes(query))
-    debug(`[DatabasePicker] filteredItems: query="${query}", filtered ${filtered.length}/${allItems.length} items`)
-    return filtered
-  }, [allItems, searchQuery])
+    return allItems.filter((item) => item.toLowerCase().includes(query))
+  }, [isSearch, allItems, searchQuery])
 
   const displayItems = filteredItems
-  debug(`[DatabasePicker] displayItems: ${displayItems.length} items (searchMode=${searchMode}, hasQuery=${!!searchQuery})`)
 
   // Reset cursor when search results change
   useEffect(() => {
@@ -310,6 +357,12 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       return
     }
 
+    // In search mode: m loads more results
+    if (isSearch && key.name === "m" && searchNextCursor && !searchLoading) {
+      doSearch(searchQuery, searchNextCursor, true)
+      return
+    }
+
     // In select mode: Space/Return toggles selection
     if (!isSearch && (key.name === "space" || key.name === "return")) {
       const db = displayItems[cursorIndex]
@@ -342,7 +395,11 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   const visibleItems = displayItems.slice(scrollOffset, scrollOffset + listHeight)
 
   const infoText = isSearch
-    ? `${database}: ${displayItems.length} items`
+    ? searchLoading
+      ? `${database}: searching...`
+      : searchTotalCount != null && searchTotalCount > displayItems.length
+        ? `${database}: ${displayItems.length} of ${searchTotalCount}`
+        : `${database}: ${displayItems.length} items`
     : `${connectionName}: ${selected.size} of ${allDbs.length}`
 
   return (
@@ -419,8 +476,8 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
             // Get Redis type icon for search mode — always show for redis so alignment is consistent
             let typeIcon = ""
             if (isSearch && isRedis) {
-              const treeNode = dbChildren.find(child => child.label === item)
-              typeIcon = getRedisTypeIcon(treeNode?.redisType)
+              const result = searchResults.find(r => r.name === item)
+              typeIcon = getRedisTypeIcon(result?.redisType)
             }
 
             // Truncate item name to fit within dialog width
@@ -442,9 +499,14 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
               </box>
             )
           })}
-          {displayItems.length === 0 && (
+          {displayItems.length === 0 && !searchLoading && (
             <box flexDirection="row" width="100%">
               <text fg="#565f89">  No items found</text>
+            </box>
+          )}
+          {searchLoading && displayItems.length === 0 && (
+            <box flexDirection="row" width="100%">
+              <text fg="#565f89">  Loading...</text>
             </box>
           )}
         </box>
@@ -455,6 +517,12 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
               <text fg="#414868">
                 <span fg="#565f89">[Enter]</span> Open {"  "}
                 <span fg="#565f89">[/]</span> Search
+                {searchNextCursor && (
+                  <>
+                    {"  "}
+                    <span fg="#565f89">[m]</span> More
+                  </>
+                )}
               </text>
               <text fg="#414868">
                 <span fg="#565f89">[j/k]</span> Navigate {"  "}

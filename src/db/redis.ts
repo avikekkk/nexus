@@ -21,14 +21,19 @@ function escapeRedisGlobLiteral(value: string): string {
 }
 
 export async function buildRedisCollectionInfos(redis: Redis, keys: string[]): Promise<CollectionInfo[]> {
-  const infos: CollectionInfo[] = []
-  
+  if (keys.length === 0) return []
+
+  // Pipeline TYPE commands for all keys at once
+  const pipeline = redis.pipeline()
   for (const key of keys) {
-    const keyType = (await redis.type(key)) as RedisKeyType
-    infos.push({ name: key, type: "key", count: 1, redisType: keyType })
+    pipeline.type(key)
   }
-  
-  return infos
+  const results = await pipeline.exec()
+
+  return keys.map((key, i) => {
+    const redisType = (results?.[i]?.[1] as RedisKeyType) ?? undefined
+    return { name: key, type: "key" as const, count: 1, redisType }
+  })
 }
 
 async function scanRedisKeys(
