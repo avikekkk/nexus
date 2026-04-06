@@ -14,15 +14,19 @@ export interface ConnectionConfig {
   visibleDatabases?: string[]
 }
 
+export type RedisKeyType = "string" | "hash" | "list" | "set" | "zset" | "stream" | "none"
+
 export interface CollectionInfo {
   name: string
   type: "collection" | "table" | "key" | "keyspace"
   count?: number
+  redisType?: RedisKeyType
 }
 
 export interface CollectionPage {
   items: CollectionInfo[]
   nextCursor: string | null
+  totalCount?: number
 }
 
 export interface ColumnDef {
@@ -57,6 +61,8 @@ export interface DbDriver {
   listDatabases(): Promise<string[]>
   listCollections(db: string): Promise<CollectionInfo[]>
   listCollectionsPage?(db: string, cursor?: string | null, limit?: number): Promise<CollectionPage>
+  searchCollectionsPage?(db: string, query: string, cursor?: string | null, limit?: number): Promise<CollectionPage>
+  countCollections?(db: string): Promise<number>
   query(opts: QueryOpts): Promise<QueryResult>
 }
 

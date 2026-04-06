@@ -1,5 +1,6 @@
 import { nodeId, type TreeNode } from "../../state/tree.ts"
-import type { ConnectionState } from "../../db/types.ts"
+import type { ConnectionState, RedisKeyType } from "../../db/types.ts"
+import { getRedisTypeIcon } from "../../utils/redisIcons.ts"
 
 const EXPANDED_ICON = "▾"
 const COLLAPSED_ICON = "▸"
@@ -32,6 +33,7 @@ export interface FlatNode {
   parentId?: string // for "more" nodes: the nodeId of the parent database
   totalCount?: number // for "more" nodes
   visibleCount?: number // for "more" nodes
+  redisType?: RedisKeyType // for Redis keys
 }
 
 interface TreeStateSlice {
@@ -118,6 +120,7 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
             database: db.database,
             collection: col.collection,
             count: col.count,
+            redisType: col.redisType,
           })
         }
 
@@ -135,7 +138,7 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
           })
         }
 
-        if (hasMore) {
+        if (hasMore && connection.config.type !== "redis") {
           flat.push({
             id: `${dbNodeId}/__more`,
             label: `+${children.length - visibleCount} more`,
@@ -199,7 +202,9 @@ export function TreeRow({
     icon = "◦"
   }
 
-  const typeIcon = node.type === "database" ? "📁" : "📄"
+  // Use Redis-specific icons for Redis keys (all 1-wide chars for alignment)
+  // Non-redis collections use 📄 (2-wide emoji) — they won't mix with redis in the same connection
+  const typeIcon = node.type === "database" ? "📁" : node.redisType !== undefined ? getRedisTypeIcon(node.redisType) : "📄"
   const countStr = formatCount(node.count)
 
   // Calculate available width for the label

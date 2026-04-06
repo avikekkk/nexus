@@ -496,6 +496,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 database,
                 collection: col.name,
                 count: col.count,
+                redisType: col.redisType,
               }))
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: nodes })
               dispatch({ type: "TREE_SET_NEXT_CURSOR", nodeId: nid, cursor: cols.nextCursor })
@@ -650,6 +651,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               database,
               collection: col.name,
               count: col.count,
+              redisType: col.redisType,
             }))
             const mergedChildren = [...existingChildren, ...nextNodes]
 

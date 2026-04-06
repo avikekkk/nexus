@@ -1,9 +1,10 @@
 import Redis from "ioredis"
-import type { DbDriver, CollectionInfo, ColumnDef, CollectionPage } from "./types.ts"
+import type { DbDriver, CollectionInfo, ColumnDef, CollectionPage, RedisKeyType } from "./types.ts"
 import { debug } from "../utils/debug.ts"
 
 const REDIS_SCAN_COUNT = 100
 const REDIS_SIDEBAR_PAGE_SIZE = 20
+const REDIS_SEARCH_PAGE_SIZE = 100
 
 interface ScanRedisKeysOptions {
   cursor?: string
@@ -15,8 +16,19 @@ function hasRedisGlob(pattern: string): boolean {
   return /[*?\[\]]/.test(pattern)
 }
 
-export function buildRedisCollectionInfos(keys: string[]): CollectionInfo[] {
-  return keys.map((key) => ({ name: key, type: "key", count: 1 }))
+function escapeRedisGlobLiteral(value: string): string {
+  return value.replace(/[\\*?\[\]]/g, "\\$&")
+}
+
+export async function buildRedisCollectionInfos(redis: Redis, keys: string[]): Promise<CollectionInfo[]> {
+  const infos: CollectionInfo[] = []
+  
+  for (const key of keys) {
+    const keyType = (await redis.type(key)) as RedisKeyType
+    infos.push({ name: key, type: "key", count: 1, redisType: keyType })
+  }
+  
+  return infos
 }
 
 async function scanRedisKeys(
@@ -126,16 +138,79 @@ export function createRedisDriver(): DbDriver {
       await redis.select(selectedDb)
 
       const page = await scanRedisKeys(redis, "*", { cursor: startCursor, limit })
-      const items = buildRedisCollectionInfos(page.keys)
+      const items = await buildRedisCollectionInfos(redis, page.keys)
 
       return { items, nextCursor: page.nextCursor }
+    },
+
+    async searchCollectionsPage(db, query, cursor = null, limit = REDIS_SEARCH_PAGE_SIZE): Promise<CollectionPage> {
+      if (!redis) throw new Error("Not connected")
+
+      const selectedDb = parseInt(db, 10)
+      const trimmedQuery = query.trim()
+      // Use glob pattern directly if user provides one, otherwise wrap with wildcards
+      const pattern = trimmedQuery
+        ? hasRedisGlob(trimmedQuery)
+          ? trimmedQuery
+          : `*${escapeRedisGlobLiteral(trimmedQuery)}*`
+        : "*"
+
+      await redis.select(selectedDb)
+
+      debug(`[redis.searchCollectionsPage] db=${db} query=${JSON.stringify(trimmedQuery)} pattern=${JSON.stringify(pattern)}`)
+
+      // Check for exact match first (if no glob chars)
+      if (trimmedQuery && !hasRedisGlob(trimmedQuery)) {
+        const exists = await redis.exists(trimmedQuery)
+        debug(`[redis.searchCollectionsPage] exact exists=${exists} key=${JSON.stringify(trimmedQuery)}`)
+        if (exists > 0) {
+          return { items: await buildRedisCollectionInfos(redis, [trimmedQuery]), nextCursor: null, totalCount: 1 }
+        }
+      }
+
+      // Use KEYS for search (fast, returns all matches immediately)
+      // For empty query, use SCAN to avoid blocking on large keyspaces
+      if (trimmedQuery) {
+        const keys = await redis.keys(pattern)
+        debug(`[redis.searchCollectionsPage] KEYS result count=${keys.length}`)
+        // Apply limit for display, but return total count
+        const limitedKeys = keys.slice(0, limit)
+        return {
+          items: await buildRedisCollectionInfos(redis, limitedKeys),
+          nextCursor: keys.length > limit ? "has_more" : null,
+          totalCount: keys.length,
+        }
+      }
+
+      // Empty query - use SCAN to avoid blocking
+      const startCursor = cursor ?? "0"
+      const [page, totalCount] = await Promise.all([
+        scanRedisKeys(redis, pattern, { cursor: startCursor, limit }),
+        redis.dbsize(),
+      ])
+
+      debug(
+        `[redis.searchCollectionsPage] SCAN result count=${page.keys.length} nextCursor=${page.nextCursor ?? "null"} totalCount=${totalCount}`
+      )
+
+      return {
+        items: await buildRedisCollectionInfos(redis, page.keys),
+        nextCursor: page.nextCursor,
+        totalCount,
+      }
+    },
+
+    async countCollections(db) {
+      if (!redis) throw new Error("Not connected")
+      await redis.select(parseInt(db, 10))
+      return redis.dbsize()
     },
 
     async listCollections(db) {
       if (!redis) throw new Error("Not connected")
       await redis.select(parseInt(db, 10))
       const { keys } = await scanRedisKeys(redis, "*")
-      return buildRedisCollectionInfos(keys)
+      return buildRedisCollectionInfos(redis, keys)
     },
 
     async query(opts) {

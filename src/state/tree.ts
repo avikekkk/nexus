@@ -1,3 +1,5 @@
+import type { RedisKeyType } from "../db/types.ts"
+
 export type TreeNodeType = "connection" | "database" | "collection"
 
 export interface TreeNode {
@@ -9,6 +11,7 @@ export interface TreeNode {
   collection?: string
   count?: number
   children?: TreeNode[]
+  redisType?: RedisKeyType
 }
 
 export interface TreeState {

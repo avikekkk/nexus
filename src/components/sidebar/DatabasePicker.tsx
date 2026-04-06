@@ -6,18 +6,20 @@ import { nodeId } from "../../state/tree.ts"
 import type { DbType } from "../../db/types.ts"
 import { DEFAULT_PORTS } from "../../db/types.ts"
 import { parseConnectionUrl } from "../../db/url.ts"
+import { getRedisTypeIcon } from "../../utils/redisIcons.ts"
 
 interface DatabasePickerProps {
   connectionId: string
   connectionName: string
   database?: string // if provided, search collections in this database
   mode?: "select" | "search" // "select" = pick databases, "search" = search/filter collections
+  width?: number
   left?: number
   top?: number
   onClose: () => void
 }
 
-export function DatabasePicker({ connectionId, connectionName, database, mode = "select", left, top, onClose }: DatabasePickerProps) {
+export function DatabasePicker({ connectionId, connectionName, database, mode = "select", width, left, top, onClose }: DatabasePickerProps) {
   const { state, setVisibleDatabases, openCollection, updateConnection } = useApp()
 
   // Tab state: 'databases' or 'edit'
@@ -38,6 +40,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
 
   // Edit form state
   const currentConnection = state.connections.find((c) => c.config.id === connectionId)
+  const isRedis = currentConnection?.config.type === "redis"
   const existingConfig = currentConnection?.config
   const [editName, setEditName] = useState(existingConfig?.name ?? "")
   const [editDbType, setEditDbType] = useState<DbType>(existingConfig?.type ?? "mongo")
@@ -123,7 +126,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   const listRows = Math.max(minListRows, Math.min(displayItems.length, maxListRows))
   const tabHeaderRows = !isSearch ? 2 : 0 // Tab headers when in select mode
   // Edit tab: tabs(2) + fields(8) + error row(0-1) + save button(2) + hints(3) = ~15-16 + padding
-  const height = activeTab === "edit" ? 21 : 1 + 1 + searchRows + listRows + 2 + 2 + tabHeaderRows // title + info + search + list + shortcuts + padding + tabs
+  const height = activeTab === "edit" ? 21 : 1 + 1 + searchRows + listRows + 1 + 2 + 2 + tabHeaderRows // title + info + search + list + margin + shortcuts + padding + tabs
   const listHeight = listRows
 
   useKeyboard((key) => {
@@ -405,7 +408,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
           </box>
         )}
 
-        <box flexDirection="column" marginTop={searchMode ? 0 : 1} flexGrow={1}>
+        <box flexDirection="column" marginTop={searchMode ? 0 : 1} flexGrow={1} height={listHeight}>
           {visibleItems.map((item, idx) => {
             const realIndex = scrollOffset + idx
             const isSelected = !isSearch && selected.has(item)
@@ -413,15 +416,29 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
             const checkmark = isSearch ? "◦" : isSelected ? "✓" : " "
             const checkColor = isSearch ? "#565f89" : isSelected ? "#9ece6a" : "#565f89"
 
+            // Get Redis type icon for search mode — always show for redis so alignment is consistent
+            let typeIcon = ""
+            if (isSearch && isRedis) {
+              const treeNode = dbChildren.find(child => child.label === item)
+              typeIcon = getRedisTypeIcon(treeNode?.redisType)
+            }
+
+            // Truncate item name to fit within dialog width
+            // Available width: dialogWidth(50) - border(2) - padding(2) - checkbox(3) - icon(0 or 1) - spaces
+            const iconWidth = typeIcon ? 2 : 0 // icon char + space
+            const maxItemWidth = (isSearch ? 50 : 44) - 2 - 2 - 3 - iconWidth - 1
+            const displayName = item.length > maxItemWidth ? item.slice(0, maxItemWidth - 1) + "…" : item
+
             return (
               <box
                 key={item}
                 flexDirection="row"
+                height={1}
                 backgroundColor={isCursor ? "#283457" : undefined}
                 width="100%"
               >
                 <text fg={checkColor}>[{checkmark}]</text>
-                <text fg="#c0caf5"> {item}</text>
+                <text fg="#c0caf5">{typeIcon ? `${typeIcon} ` : " "}{displayName}</text>
               </box>
             )
           })}
@@ -432,7 +449,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
           )}
         </box>
 
-        <box paddingX={1} marginTop={0} flexDirection="column" flexShrink={0}>
+        <box paddingX={0} marginTop={1} flexDirection="column" flexShrink={0}>
           {isSearch ? (
             <>
               <text fg="#414868">
