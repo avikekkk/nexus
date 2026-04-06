@@ -87,11 +87,10 @@ export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
             const connectionName = connection?.config.name || ""
             
             // Format: {icon} {collection} [{connection}]
-            const collectionLabel = tab.label
-            const fullLabel = `${dbTypeIcon} ${collectionLabel} [${connectionName}]`
-            
-            const maxTabLen = 40
-            const displayLabel = fullLabel.length > maxTabLen ? fullLabel.slice(0, maxTabLen - 1) + "…" : fullLabel
+            const maxLabelLen = 24
+            const collectionLabel = tab.label.length > maxLabelLen
+              ? tab.label.slice(0, maxLabelLen - 2) + "…"
+              : tab.label
             
             if (isActive) {
               return (
