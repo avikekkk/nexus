@@ -1,6 +1,7 @@
 import { nodeId, type TreeNode } from "../../state/tree.ts"
-import type { ConnectionState, RedisKeyType } from "../../db/types.ts"
+import type { ConnectionState, RedisKeyType, DbType } from "../../db/types.ts"
 import { getRedisTypeIcon } from "../../utils/redisIcons.ts"
+import { DB_TYPE_ICONS } from "../../constants/dbIcons.ts"
 
 const EXPANDED_ICON = "▾"
 const COLLAPSED_ICON = "▸"
@@ -27,6 +28,7 @@ export interface FlatNode {
   isLoading: boolean
   hasChildren: boolean
   connectionId: string
+  connectionType: DbType
   database?: string
   collection?: string
   count?: number
@@ -46,6 +48,7 @@ interface TreeStateSlice {
 
 export function flattenTreeNodes(connection: ConnectionState, treeState: TreeStateSlice): FlatNode[] {
   const connId = connection.config.id
+  const connType = connection.config.type
 
   if (connection.status !== "connected") return []
 
@@ -65,6 +68,7 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
       isLoading: true,
       hasChildren: false,
       connectionId: connId,
+      connectionType: connType,
     })
     return flat
   }
@@ -84,6 +88,7 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
       isLoading,
       hasChildren: true,
       connectionId: connId,
+      connectionType: connType,
       database: db.database,
     })
 
@@ -98,6 +103,7 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
           isLoading: true,
           hasChildren: false,
           connectionId: connId,
+          connectionType: connType,
           database: db.database,
         })
       } else {
@@ -117,6 +123,7 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
             isLoading: false,
             hasChildren: false,
             connectionId: connId,
+            connectionType: connType,
             database: db.database,
             collection: col.collection,
             count: col.count,
@@ -134,6 +141,7 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
             isLoading: false,
             hasChildren: false,
             connectionId: connId,
+            connectionType: connType,
             database: db.database,
           })
         }
@@ -148,6 +156,7 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
             isLoading: false,
             hasChildren: false,
             connectionId: connId,
+            connectionType: connType,
             database: db.database,
             parentId: dbNodeId,
             totalCount: children.length > visibleCount ? children.length : undefined,
@@ -202,9 +211,14 @@ export function TreeRow({
     icon = "◦"
   }
 
-  // Use Redis-specific icons for Redis keys (all 1-wide chars for alignment)
-  // Non-redis collections use 📄 (2-wide emoji) — they won't mix with redis in the same connection
-  const typeIcon = node.type === "database" ? "📁" : node.redisType !== undefined ? getRedisTypeIcon(node.redisType) : "📄"
+  // Database rows show the DB type icon (MongoDB/Redis/MySQL icon)
+  // Collection/table rows show type-specific icons
+  const typeIcon = 
+    node.type === "database" 
+      ? DB_TYPE_ICONS[node.connectionType]
+      : node.redisType !== undefined 
+        ? getRedisTypeIcon(node.redisType) 
+        : "📄"
   const countStr = formatCount(node.count)
 
   // Calculate available width for the label

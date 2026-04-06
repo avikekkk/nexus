@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from "react"
 import { useKeyboard } from "@opentui/react"
 import { useApp } from "../../state/AppContext.tsx"
 import { DataTable } from "../main/DataTable.tsx"
+import { DB_TYPE_ICONS, DB_TYPE_COLORS } from "../../constants/dbIcons.ts"
 
 interface MainPanelProps {
   focused: boolean
@@ -78,13 +79,27 @@ export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
         ) : (
           tabs.map((tab) => {
             const isActive = tab.id === activeTabId
-            const maxTabLen = 24
-            const label = tab.label.length > maxTabLen ? tab.label.slice(0, maxTabLen - 1) + "…" : tab.label
+            
+            // Get connection info for this tab
+            const connection = state.connections.find(c => c.config.id === tab.connectionId)
+            const dbTypeIcon = connection ? DB_TYPE_ICONS[connection.config.type] : ""
+            const iconColor = connection ? DB_TYPE_COLORS[connection.config.type] : "#7aa2f7"
+            const connectionName = connection?.config.name || ""
+            
+            // Format: {icon} {collection} [{connection}]
+            const collectionLabel = tab.label
+            const fullLabel = `${dbTypeIcon} ${collectionLabel} [${connectionName}]`
+            
+            const maxTabLen = 40
+            const displayLabel = fullLabel.length > maxTabLen ? fullLabel.slice(0, maxTabLen - 1) + "…" : fullLabel
+            
             if (isActive) {
               return (
                 <text key={tab.id} bg="#292e42">
                   <span fg="#7aa2f7">▎</span>
-                  <span fg="#c0caf5">{label}</span>
+                  <span fg={iconColor}>{dbTypeIcon}</span>
+                  <span fg="#c0caf5"> {collectionLabel} </span>
+                  <span fg="#565f89">[{connectionName}]</span>
                   <span fg="#414868">▕</span>
                 </text>
               )
@@ -92,7 +107,7 @@ export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
             return (
               <text key={tab.id}>
                 <span fg="#292e42">▎</span>
-                <span fg="#565f89">{label}</span>
+                <span fg="#565f89">{dbTypeIcon} {collectionLabel} [{connectionName}]</span>
                 <span fg="#292e42">▕</span>
               </text>
             )

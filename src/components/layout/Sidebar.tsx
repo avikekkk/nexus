@@ -5,6 +5,7 @@ import { useApp } from "../../state/AppContext.tsx"
 import { flattenTreeNodes, formatMoreLabel, TreeRow, type FlatNode } from "../sidebar/TreeBrowser.tsx"
 import { nodeId } from "../../state/tree.ts"
 import type { ConnectionStatus } from "../../db/types.ts"
+import { DB_TYPE_ICONS, getIconColor, STATUS_INDICATORS } from "../../constants/dbIcons.ts"
 
 interface SidebarProps {
   width: number
@@ -18,20 +19,6 @@ interface SidebarProps {
   onShowDatabasePicker: (connectionId: string) => void
   onShowSearchDialog: (connectionId: string, connectionName: string, database: string) => void
   onFocusMain?: () => void
-}
-
-const STATUS_ICONS: Record<ConnectionStatus, string> = {
-  disconnected: "○",
-  connecting: "◔",
-  connected: "●",
-  error: "✖",
-}
-
-const STATUS_COLORS: Record<ConnectionStatus, string> = {
-  disconnected: "#565f89",
-  connecting: "#e0af68",
-  connected: "#9ece6a",
-  error: "#f7768e",
 }
 
 function truncateName(name: string, maxLen: number): string {
@@ -347,24 +334,26 @@ export function Sidebar({
 
             if (row.kind === "connection") {
               const conn = state.connections[row.index]!
-              const icon = STATUS_ICONS[conn.status]
-              const iconColor = STATUS_COLORS[conn.status]
-              const typeLabel = ` ${conn.config.type}`
+              const typeIcon = DB_TYPE_ICONS[conn.config.type]
+              const iconColor = getIconColor(conn.config.type, conn.status)
               
               // Get database count for this connection
               const allDbs = state.allDatabases.get(conn.config.id)
               const dbCount = allDbs ? allDbs.length : 0
               const dbCountLabel = dbCount > 0 ? ` (${dbCount})` : ""
               
-              const maxNameLen = Math.max(3, width - 2 - 1 - 1 - typeLabel.length - dbCountLabel.length - 2)
+              // Status indicator for non-connected states
+              const statusIndicator = conn.status !== "connected" ? ` ${STATUS_INDICATORS[conn.status]}` : ""
+              
+              const maxNameLen = Math.max(3, width - 2 - 1 - 1 - dbCountLabel.length - statusIndicator.length - 2)
               const displayName = truncateName(conn.config.name, maxNameLen)
               return (
                 <box key={conn.config.id} flexDirection="row" gap={1} paddingX={1} backgroundColor={bg} justifyContent="space-between">
                   <box flexDirection="row" gap={1}>
-                    <text fg={iconColor}>{icon}</text>
+                    <text fg={iconColor}>{typeIcon}</text>
                     <text fg={fg}>
                       {displayName}
-                      <span fg="#414868">{typeLabel}</span>
+                      {statusIndicator && <span fg={iconColor}>{statusIndicator}</span>}
                     </text>
                   </box>
                   {dbCount > 0 && (
