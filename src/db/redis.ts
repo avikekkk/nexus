@@ -62,37 +62,173 @@ async function scanRedisKeys(
 export function createRedisDriver(): DbDriver {
   let redis: Redis | null = null
 
-  async function getKeyValue(key: string): Promise<{ type: string; value: string }> {
+  async function querySingleKey(
+    key: string,
+    limit: number,
+    offset: number
+  ): Promise<{ columns: ColumnDef[]; rows: Record<string, unknown>[]; totalCount: number; query: string }> {
     if (!redis) throw new Error("Not connected")
     const keyType = await redis.type(key)
+    const ttl = await redis.ttl(key)
+    const ttlVal = ttl === -1 ? null : ttl
 
-    let value: string
     switch (keyType) {
-      case "string":
-        value = (await redis.get(key)) ?? ""
-        break
-      case "hash":
-        value = JSON.stringify(await redis.hgetall(key))
-        break
-      case "list":
-        value = JSON.stringify(await redis.lrange(key, 0, -1))
-        break
-      case "set":
-        value = JSON.stringify(await redis.smembers(key))
-        break
-      case "zset": {
-        const members = await redis.zrange(key, 0, -1, "WITHSCORES")
-        const pairs: Record<string, string> = {}
-        for (let i = 0; i < members.length; i += 2) {
-          pairs[members[i]!] = members[i + 1]!
+      case "string": {
+        const value = (await redis.get(key)) ?? ""
+        return {
+          columns: [
+            { name: "key", type: "string" },
+            { name: "value", type: "string" },
+            { name: "ttl", type: "number" },
+          ],
+          rows: offset === 0 ? [{ key, value, ttl: ttlVal }] : [],
+          totalCount: 1,
+          query: `GET ${key}`,
         }
-        value = JSON.stringify(pairs)
-        break
       }
-      default:
-        value = `<${keyType}>`
+
+      case "hash": {
+        const allFields = await redis.hkeys(key)
+        const totalCount = allFields.length
+        const pageFields = allFields.slice(offset, offset + limit)
+        const rows: Record<string, unknown>[] = []
+        if (pageFields.length > 0) {
+          const values = await redis.hmget(key, ...pageFields)
+          for (let i = 0; i < pageFields.length; i++) {
+            rows.push({ field: pageFields[i], value: values[i], ttl: i === 0 && offset === 0 ? ttlVal : null })
+          }
+        }
+        return {
+          columns: [
+            { name: "field", type: "string" },
+            { name: "value", type: "string" },
+            { name: "ttl", type: "number" },
+          ],
+          rows,
+          totalCount,
+          query: `HKEYS ${key} (${totalCount} fields)`,
+        }
+      }
+
+      case "list": {
+        const totalCount = await redis.llen(key)
+        const elements = await redis.lrange(key, offset, offset + limit - 1)
+        const rows = elements.map((value, i) => ({
+          index: offset + i,
+          value,
+          ttl: i === 0 && offset === 0 ? ttlVal : null,
+        }))
+        return {
+          columns: [
+            { name: "index", type: "number" },
+            { name: "value", type: "string" },
+            { name: "ttl", type: "number" },
+          ],
+          rows,
+          totalCount,
+          query: `LRANGE ${key} ${offset} ${offset + limit - 1} (${totalCount} elements)`,
+        }
+      }
+
+      case "set": {
+        const totalCount = await redis.scard(key)
+        const allMembers = await redis.smembers(key)
+        const pageMembers = allMembers.slice(offset, offset + limit)
+        const rows = pageMembers.map((member) => ({
+          member,
+          ttl: null as number | null,
+        }))
+        if (rows.length > 0 && offset === 0) rows[0]!.ttl = ttlVal
+        return {
+          columns: [
+            { name: "member", type: "string" },
+            { name: "ttl", type: "number" },
+          ],
+          rows,
+          totalCount,
+          query: `SMEMBERS ${key} (${totalCount} members)`,
+        }
+      }
+
+      case "zset": {
+        const totalCount = await redis.zcard(key)
+        const members = await redis.zrange(key, offset, offset + limit - 1, "WITHSCORES")
+        const rows: Record<string, unknown>[] = []
+        for (let i = 0; i < members.length; i += 2) {
+          rows.push({
+            member: members[i],
+            score: parseFloat(members[i + 1]!),
+            ttl: rows.length === 0 && offset === 0 ? ttlVal : null,
+          })
+        }
+        return {
+          columns: [
+            { name: "member", type: "string" },
+            { name: "score", type: "number" },
+            { name: "ttl", type: "number" },
+          ],
+          rows,
+          totalCount,
+          query: `ZRANGE ${key} ${offset} ${offset + limit - 1} WITHSCORES (${totalCount} members)`,
+        }
+      }
+
+      case "stream": {
+        const totalCount = await redis.xlen(key)
+        const entries = await redis.xrange(key, "-", "+", "COUNT", limit)
+        // Skip `offset` entries — XRANGE doesn't support offset natively,
+        // so for non-zero offset we use the ID of the last skipped entry
+        let pageEntries = entries
+        if (offset > 0) {
+          const skipEntries = await redis.xrange(key, "-", "+", "COUNT", offset + limit)
+          pageEntries = skipEntries.slice(offset)
+        }
+
+        // Collect all field names across entries for dynamic columns
+        const fieldSet = new Set<string>()
+        for (const [, fields] of pageEntries) {
+          for (let i = 0; i < fields.length; i += 2) {
+            fieldSet.add(fields[i]!)
+          }
+        }
+        const fieldNames = [...fieldSet]
+
+        const columns: ColumnDef[] = [
+          { name: "id", type: "string" },
+          ...fieldNames.map((f) => ({ name: f, type: "string" })),
+          { name: "ttl", type: "number" },
+        ]
+
+        const rows: Record<string, unknown>[] = pageEntries.map(([id, fields], i) => {
+          const row: Record<string, unknown> = { id }
+          for (let j = 0; j < fields.length; j += 2) {
+            row[fields[j]!] = fields[j + 1]
+          }
+          row.ttl = i === 0 && offset === 0 ? ttlVal : null
+          return row
+        })
+
+        return {
+          columns,
+          rows,
+          totalCount,
+          query: `XRANGE ${key} - + COUNT ${limit} (${totalCount} entries)`,
+        }
+      }
+
+      default: {
+        return {
+          columns: [
+            { name: "key", type: "string" },
+            { name: "type", type: "string" },
+            { name: "ttl", type: "number" },
+          ],
+          rows: offset === 0 ? [{ key, type: keyType, ttl: ttlVal }] : [],
+          totalCount: 1,
+          query: `TYPE ${key}`,
+        }
+      }
     }
-    return { type: keyType, value }
   }
 
   return {
@@ -224,40 +360,52 @@ export function createRedisDriver(): DbDriver {
 
       const start = performance.now()
       const pattern = opts.collection || "*"
-
       const limit = opts.limit ?? 50
       const offset = opts.offset ?? 0
-      let totalCount = 0
-      let pagedKeys: string[] = []
 
+      // Single key — expand its contents based on type
       if (!hasRedisGlob(pattern)) {
         const exists = await redis.exists(pattern)
-        totalCount = exists > 0 ? 1 : 0
-        pagedKeys = offset === 0 && exists > 0 ? [pattern] : []
-      } else {
-        const { keys: allKeys } = await scanRedisKeys(redis, pattern)
-        totalCount = allKeys.length
-        pagedKeys = allKeys.slice(offset, offset + limit)
+        if (exists > 0) {
+          const result = await querySingleKey(pattern, limit, offset)
+          const duration = Math.round(performance.now() - start)
+          return { ...result, duration }
+        }
+        // Key doesn't exist
+        return {
+          columns: [{ name: "key", type: "string" }],
+          rows: [],
+          totalCount: 0,
+          duration: Math.round(performance.now() - start),
+          query: `GET ${pattern}`,
+        }
       }
+
+      // Glob pattern — list matching keys
+      const { keys: allKeys } = await scanRedisKeys(redis, pattern)
+      const pagedKeys = allKeys.slice(offset, offset + limit)
 
       const columns: ColumnDef[] = [
         { name: "key", type: "string" },
         { name: "type", type: "string" },
-        { name: "value", type: "string" },
         { name: "ttl", type: "number" },
       ]
 
-      const rows: Record<string, unknown>[] = []
+      const pipeline = redis.pipeline()
       for (const key of pagedKeys) {
-        const { type, value } = await getKeyValue(key)
-        const ttl = await redis.ttl(key)
-        rows.push({ key, type, value, ttl: ttl === -1 ? null : ttl })
+        pipeline.type(key)
+        pipeline.ttl(key)
       }
+      const pipeResults = await pipeline.exec()
+
+      const rows: Record<string, unknown>[] = pagedKeys.map((key, i) => ({
+        key,
+        type: pipeResults?.[i * 2]?.[1] ?? "unknown",
+        ttl: pipeResults?.[i * 2 + 1]?.[1] === -1 ? null : pipeResults?.[i * 2 + 1]?.[1],
+      }))
 
       const duration = Math.round(performance.now() - start)
-      const queryStr = `SCAN 0 MATCH ${pattern} COUNT 100`
-
-      return { columns, rows, totalCount, duration, query: queryStr }
+      return { columns, rows, totalCount: allKeys.length, duration, query: `SCAN 0 MATCH ${pattern} COUNT 100` }
     },
   }
 }
