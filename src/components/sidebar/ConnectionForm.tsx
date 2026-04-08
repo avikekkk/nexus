@@ -262,7 +262,7 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
             Password
           </text>
           <input
-            value={password}
+            value={focusIndex === 6 ? password : password.replace(/./g, "*")}
             onChange={hasUrl ? () => {} : setPassword}
             placeholder="optional"
             focused={!hasUrl && focusIndex === 6}

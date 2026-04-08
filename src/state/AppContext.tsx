@@ -354,7 +354,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const conn = state.connections.find((c) => c.config.id === id)
     if (!conn) return
 
-    const label = `${conn.config.name} (${conn.config.type}://${conn.config.host}:${conn.config.port})`
+    const label = conn.config.name
     log("info", "connection", `Connecting to ${label}...`)
     dispatch({ type: "SET_STATUS", id, status: "connecting" })
     try {
