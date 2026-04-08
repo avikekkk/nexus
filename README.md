@@ -8,6 +8,8 @@
 [![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)](#)
 [![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](#)
 
+![Nexus Showcase](assets/showcase.gif)
+
 ```
 ╭─ Connections ─────╮╭─ [users] [orders] [keys:*] ──────────────────╮
 │ ▸ Production Mongo ││ Filter: { status: "active" }  Sort: _id ↓   │
