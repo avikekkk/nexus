@@ -21,7 +21,7 @@ interface DatabasePickerProps {
 const SEARCH_INITIAL_LIMIT = 200
 const SEARCH_DEBOUNCE_MS = 300
 
-export function DatabasePicker({ connectionId, connectionName, database, mode = "select", width, left, top, onClose }: DatabasePickerProps) {
+export function DatabasePicker({ connectionId, connectionName, database, mode = "select", width: _width, left, top, onClose }: DatabasePickerProps) {
   const { state, setVisibleDatabases, openCollection, updateConnection, getDriver, log } = useApp()
 
   // Tab state: 'databases' or 'edit'

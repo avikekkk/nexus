@@ -54,7 +54,7 @@ function getShortcuts(focusZone: FocusZone, showQueryLog: boolean): Shortcut[] {
   return [...(contextual[focusZone] ?? []), ...base]
 }
 
-export function StatusBar({ focusZone, showQueryLog, showDetail }: StatusBarProps) {
+export function StatusBar({ focusZone, showQueryLog }: StatusBarProps) {
   const shortcuts = getShortcuts(focusZone, showQueryLog)
 
   return (

@@ -1,5 +1,5 @@
 import mysql from "mysql2/promise"
-import type { ConnectionConfig, DbDriver, QueryOpts, QueryResult, CollectionInfo, ColumnDef } from "./types.ts"
+import type { DbDriver, ColumnDef } from "./types.ts"
 
 export function createMysqlDriver(): DbDriver {
   let connection: mysql.Connection | null = null

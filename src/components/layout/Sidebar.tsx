@@ -4,7 +4,6 @@ import type { ScrollBoxRenderable } from "@opentui/core"
 import { useApp } from "../../state/AppContext.tsx"
 import { flattenTreeNodes, formatMoreLabel, TreeRow, type FlatNode } from "../sidebar/TreeBrowser.tsx"
 import { nodeId } from "../../state/tree.ts"
-import type { ConnectionStatus } from "../../db/types.ts"
 import { DB_TYPE_ICONS, getIconColor, STATUS_INDICATORS } from "../../constants/dbIcons.ts"
 
 interface SidebarProps {
@@ -32,9 +31,6 @@ type RowItem =
   | { kind: "tree"; node: FlatNode }
   | { kind: "more"; connectionId: string; totalCount?: number; visibleCount: number; parentType: "connection" | "database"; parentId: string }
 
-// Max rows to render in sidebar list (conservative estimate for typical terminal)
-const MAX_RENDER_ROWS = 30
-
 export function Sidebar({
   width,
   height,
@@ -42,7 +38,7 @@ export function Sidebar({
   showConnectionForm,
   showDatabasePicker,
   showSearchDialog,
-  searchDialogDb,
+  searchDialogDb: _searchDialogDb,
   onShowConnectionForm,
   onShowDatabasePicker,
   onShowSearchDialog,

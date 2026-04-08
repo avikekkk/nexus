@@ -1,5 +1,5 @@
 import { MongoClient, type Db } from "mongodb"
-import type { ConnectionConfig, DbDriver, QueryOpts, QueryResult, CollectionInfo, ColumnDef } from "./types.ts"
+import type { ConnectionConfig, DbDriver, CollectionInfo, ColumnDef } from "./types.ts"
 
 export function createMongoDriver(): DbDriver {
   let client: MongoClient | null = null

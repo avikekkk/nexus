@@ -1,7 +1,7 @@
 /**
  * Formats database connection errors into user-friendly messages
  */
-export function formatConnectionError(error: unknown, connectionUri?: string): string {
+export function formatConnectionError(error: unknown, _connectionUri?: string): string {
   const rawMessage = error instanceof Error ? error.message : String(error)
 
   // DNS/Network errors

@@ -22,7 +22,7 @@ export function App() {
   const { state, addConnection } = useApp()
   const [focusZone, setFocusZone] = useState<FocusZone>("sidebar")
   const [showQueryLog, setShowQueryLog] = useState(true)
-  const [showDetail, setShowDetail] = useState(false)
+  const [showDetail] = useState(false)
   const [showConnectionForm, setShowConnectionForm] = useState(false)
   const [databasePickerConnectionId, setDatabasePickerConnectionId] = useState<string | null>(null)
   const [searchDialogDb, setSearchDialogDb] = useState<{ connectionId: string; connectionName: string; database: string } | null>(null)
