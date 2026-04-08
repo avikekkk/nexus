@@ -2,7 +2,7 @@
 
 # Nexus
 
-**A terminal UI for browsing databases**
+**A tool for browsing databases**
 
 [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)](#)
 [![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)](#)
