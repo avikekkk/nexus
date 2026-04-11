@@ -14,6 +14,164 @@ interface FilterBarProps {
   onUnfocus: () => void
 }
 
+const AUTO_PAIR_MAP: Record<string, string> = {
+  "{": "}",
+  "[": "]",
+  "(": ")",
+  '"': '"',
+  "'": "'",
+}
+
+interface InputEditResult {
+  value: string
+  cursor: number
+}
+
+function getInputAfterDeleteWord(input: string, cursor: number): InputEditResult {
+  if (!input || cursor <= 0) {
+    return { value: input, cursor }
+  }
+
+  let start = cursor
+
+  while (start > 0 && /\s/.test(input[start - 1])) {
+    start -= 1
+  }
+
+  while (start > 0 && /[a-zA-Z0-9_]/.test(input[start - 1])) {
+    start -= 1
+  }
+
+  if (start === cursor && start > 0) {
+    start -= 1
+  }
+
+  return {
+    value: input.slice(0, start) + input.slice(cursor),
+    cursor: start,
+  }
+}
+
+function getInputAfterBackspace(input: string, cursor: number): InputEditResult {
+  if (!input || cursor <= 0) {
+    return { value: input, cursor }
+  }
+
+  const before = input.slice(0, cursor)
+  const after = input.slice(cursor)
+  const prevChar = before.at(-1) ?? ""
+  const nextChar = after.at(0) ?? ""
+
+  if (AUTO_PAIR_MAP[prevChar] === nextChar) {
+    return {
+      value: input.slice(0, cursor - 1) + input.slice(cursor + 1),
+      cursor: cursor - 1,
+    }
+  }
+
+  return {
+    value: input.slice(0, cursor - 1) + after,
+    cursor: cursor - 1,
+  }
+}
+
+function getInputAfterDelete(input: string, cursor: number): InputEditResult {
+  if (cursor >= input.length) {
+    return { value: input, cursor }
+  }
+
+  const currentChar = input[cursor]
+  const nextChar = input[cursor + 1] ?? ""
+
+  if (AUTO_PAIR_MAP[currentChar] === nextChar) {
+    return {
+      value: input.slice(0, cursor) + input.slice(cursor + 2),
+      cursor,
+    }
+  }
+
+  return {
+    value: input.slice(0, cursor) + input.slice(cursor + 1),
+    cursor,
+  }
+}
+
+function getCompletedInput(input: string, cursor: number, char: string): InputEditResult {
+  const before = input.slice(0, cursor)
+  const after = input.slice(cursor)
+  const prevChar = before.at(-1) ?? ""
+  const nextChar = after.at(0) ?? ""
+
+  if (char === ",") {
+    if (before.endsWith(",") || before.endsWith(", ")) return { value: input, cursor }
+    return {
+      value: `${before}, ${after}`,
+      cursor: cursor + 2,
+    }
+  }
+
+  if (char === ":") {
+    if (before.endsWith(":")) return { value: input, cursor }
+    if (before.endsWith(": ")) return { value: input, cursor }
+    return {
+      value: `${before}: ${after}`,
+      cursor: cursor + 2,
+    }
+  }
+
+  if (char === '"' || char === "'") {
+    if (before.endsWith("\\")) {
+      return {
+        value: `${before}${char}${after}`,
+        cursor: cursor + 1,
+      }
+    }
+
+    if (nextChar === char) {
+      return {
+        value: input,
+        cursor: cursor + 1,
+      }
+    }
+
+    const prevIsWord = /[a-zA-Z0-9_]/.test(prevChar)
+    const nextIsWord = /[a-zA-Z0-9_]/.test(nextChar)
+    const nextAllowsPair = !nextChar || /[\s,.:;)}\]]/.test(nextChar)
+
+    if (prevIsWord || nextIsWord || !nextAllowsPair) {
+      return {
+        value: `${before}${char}${after}`,
+        cursor: cursor + 1,
+      }
+    }
+
+    return {
+      value: `${before}${char}${char}${after}`,
+      cursor: cursor + 1,
+    }
+  }
+
+  const pair = AUTO_PAIR_MAP[char]
+  if (pair) {
+    return {
+      value: `${before}${char}${pair}${after}`,
+      cursor: cursor + 1,
+    }
+  }
+
+  if ((char === "}" || char === "]" || char === ")") && after.startsWith(char)) {
+    return {
+      value: input,
+      cursor: cursor + 1,
+    }
+  }
+
+  return {
+    value: `${before}${char}${after}`,
+    cursor: cursor + 1,
+  }
+}
+
 export function FilterBar({
   focused,
   dbType,
@@ -24,11 +182,13 @@ export function FilterBar({
   onUnfocus,
 }: FilterBarProps) {
   const [filterInput, setFilterInput] = useState(currentFilter)
+  const [cursorPos, setCursorPos] = useState(currentFilter.length)
   const [validationError, setValidationError] = useState<string | null>(null)
 
   // Sync with external changes
   useEffect(() => {
     setFilterInput(currentFilter)
+    setCursorPos(currentFilter.length)
   }, [currentFilter])
 
   // Validate input based on DB type
@@ -72,6 +232,7 @@ export function FilterBar({
 
   const handleClear = useCallback(() => {
     setFilterInput("")
+    setCursorPos(0)
     setValidationError(null)
     onClear()
   }, [onClear])
@@ -99,21 +260,45 @@ export function FilterBar({
 
     // Delete word: ctrl+backspace or ctrl+w
     if ((key.name === "backspace" && key.ctrl) || (key.name === "w" && key.ctrl)) {
-      setFilterInput((prev) => {
-        const trimmed = prev.trimEnd()
-        const lastSep = Math.max(trimmed.lastIndexOf(" "), trimmed.lastIndexOf(":"), trimmed.lastIndexOf("/"))
-        return lastSep >= 0 ? prev.slice(0, lastSep + 1) : ""
-      })
+      const result = getInputAfterDeleteWord(filterInput, cursorPos)
+      setFilterInput(result.value)
+      setCursorPos(result.cursor)
+      return
+    }
+
+    if (key.name === "left") {
+      setCursorPos((prev) => Math.max(0, prev - 1))
+      return
+    }
+
+    if (key.name === "right") {
+      setCursorPos((prev) => Math.min(filterInput.length, prev + 1))
+      return
+    }
+
+    if (key.name === "home") {
+      setCursorPos(0)
+      return
+    }
+
+    if (key.name === "end") {
+      setCursorPos(filterInput.length)
       return
     }
 
     // Handle text input
     if (key.name === "backspace") {
-      setFilterInput((prev) => prev.slice(0, -1))
+      const result = getInputAfterBackspace(filterInput, cursorPos)
+      setFilterInput(result.value)
+      setCursorPos(result.cursor)
     } else if (key.name === "delete") {
-      setFilterInput("")
+      const result = getInputAfterDelete(filterInput, cursorPos)
+      setFilterInput(result.value)
+      setCursorPos(result.cursor)
     } else if (key.sequence && key.sequence.length === 1 && !key.ctrl) {
-      setFilterInput((prev) => prev + key.sequence)
+      const result = getCompletedInput(filterInput, cursorPos, key.sequence)
+      setFilterInput(result.value)
+      setCursorPos(result.cursor)
     }
   })
 
@@ -130,10 +315,21 @@ export function FilterBar({
         <text fg="#565f89">{"Query: "}</text>
         <box flexGrow={1} flexDirection="row">
           {filterInput ? (
-            <text fg={focused ? "#c0caf5" : "#a9b1d6"}>
-              {filterInput}
-              {focused && <span fg="#7aa2f7">█</span>}
-            </text>
+            focused ? (
+              <text fg="#c0caf5">
+                {filterInput.slice(0, cursorPos)}
+                {cursorPos < filterInput.length ? (
+                  <span fg="#1a1b26" bg="#7aa2f7">
+                    {filterInput[cursorPos]}
+                  </span>
+                ) : (
+                  <span fg="#7aa2f7">█</span>
+                )}
+                {filterInput.slice(cursorPos + (cursorPos < filterInput.length ? 1 : 0))}
+              </text>
+            ) : (
+              <text fg="#a9b1d6">{filterInput}</text>
+            )
           ) : (
             <text fg="#565f89">
               {focused ? <span fg="#7aa2f7">█</span> : "{}"}
