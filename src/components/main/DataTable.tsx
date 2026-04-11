@@ -10,7 +10,10 @@ interface DataTableProps {
   pageSize: number
   onPageChange?: (offset: number) => void
   onCellSelect?: (row: number, col: number, value: unknown) => void
+  onColumnSort?: (column: string, direction: 1 | -1) => void
+  currentSort?: Record<string, 1 | -1> | null
   sidebarWidth?: number
+  filterBarActive?: boolean
 }
 
 const COLORS = {
@@ -107,7 +110,10 @@ export function DataTable({
   pageSize,
   onPageChange,
   onCellSelect,
+  onColumnSort,
+  currentSort,
   sidebarWidth = 0,
+  filterBarActive = false,
 }: DataTableProps) {
   const { width: termWidth, height: termHeight } = useTerminalDimensions()
   const [selectedRow, setSelectedRow] = useState(0)
@@ -364,6 +370,21 @@ export function DataTable({
       }
       return
     }
+
+    // Sort by current column: 's' key
+    if (key.name === "s" && onColumnSort && columns[selectedCol]) {
+      const col = columns[selectedCol]
+      const currentDir = currentSort?.[col.name]
+      // Toggle: none -> ASC (1) -> DESC (-1) -> none
+      const newDir = currentDir === 1 ? -1 : currentDir === -1 ? undefined : 1
+      if (newDir !== undefined) {
+        onColumnSort(col.name, newDir)
+      } else {
+        // Clear sort for this column
+        onColumnSort(col.name, 1) // Will be handled by parent to remove
+      }
+      return
+    }
   })
 
   // Mouse scroll handler - scrolls viewport, not selection
@@ -408,7 +429,13 @@ export function DataTable({
     const colIdx = visibleColumns[vi]!
     const col = columns[colIdx]!
     const w = vi === visibleColumns.length - 1 ? lastVisibleDisplayWidth : columnWidths[colIdx]!
-    const text = padCell(formatCellValue(col.name, w), w)
+    
+    // Check if this column is sorted
+    const sortDir = currentSort?.[col.name]
+    const sortIndicator = sortDir === 1 ? " ▴" : sortDir === -1 ? " ▾" : ""
+    const displayText = col.name + sortIndicator
+    const text = padCell(formatCellValue(displayText, w), w)
+    
     headerParts.push(
       <span key={col.name}>
         <span fg={COLORS.header}>
@@ -500,6 +527,7 @@ export function DataTable({
   const rowRange = rows.length > 0 ? `Rows ${currentOffset + 1}–${currentOffset + rows.length} of ${totalCount}` : "No rows"
   const colInfo = `Col ${selectedCol + 1}/${columns.length}`
   const navHint = [hasPrevPage ? "[p]prev" : "", hasNextPage ? "[n]next" : ""].filter(Boolean).join("  ")
+  const filterHints = filterBarActive ? "[Enter] Run  [Esc] Close  [⌃L] Clear" : "[/]filter  [s]sort"
 
   return (
     <box flexDirection="column" flexGrow={1} onMouseScroll={handleMouseScroll}>
@@ -550,6 +578,12 @@ export function DataTable({
             <>
               {"  "}
               <span fg={COLORS.pageInactive}>{navHint}</span>
+            </>
+          ) : null}
+          {filterHints ? (
+            <>
+              {"  "}
+              <span fg={COLORS.pageInactive}>{filterHints}</span>
             </>
           ) : null}
           {showHorizontalScrollbar && (

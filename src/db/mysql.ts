@@ -1,5 +1,6 @@
 import mysql from "mysql2/promise"
 import type { DbDriver, ColumnDef } from "./types.ts"
+import { parseMySQLQuery, sortToOrderBy } from "../utils/queryParser.ts"
 
 export function createMysqlDriver(): DbDriver {
   let connection: mysql.Connection | null = null
@@ -53,9 +54,22 @@ export function createMysqlDriver(): DbDriver {
 
       const start = performance.now()
 
-      if (opts.rawQuery) {
+      // If rawQuery provided, parse it for WHERE/ORDER BY/LIMIT
+      if (opts.rawQuery && opts.rawQuery.trim()) {
+        const parsed = parseMySQLQuery(opts.rawQuery)
+        if (parsed.error) {
+          throw new Error(`Query parse error: ${parsed.error}`)
+        }
+
         await connection.query(`USE \`${opts.database}\``)
-        const [rows, fields] = await connection.query(opts.rawQuery)
+        
+        const table = `\`${opts.collection}\``
+        const whereClause = parsed.where ? ` WHERE ${parsed.where}` : ""
+        const orderClause = parsed.orderBy ? ` ORDER BY ${parsed.orderBy}` : ""
+        const limitClause = parsed.limit ? ` LIMIT ${parsed.limit}` : ""
+        
+        const fullQuery = `SELECT * FROM ${table}${whereClause}${orderClause}${limitClause}`
+        const [rows, fields] = await connection.query(fullQuery)
         const duration = Math.round(performance.now() - start)
 
         const resultRows = Array.isArray(rows) ? (rows as Record<string, unknown>[]) : []
@@ -68,7 +82,7 @@ export function createMysqlDriver(): DbDriver {
           rows: resultRows,
           totalCount: resultRows.length,
           duration,
-          query: opts.rawQuery,
+          query: fullQuery,
         }
       }
 
@@ -88,8 +102,7 @@ export function createMysqlDriver(): DbDriver {
 
       let orderClause = ""
       if (opts.sort && Object.keys(opts.sort).length > 0) {
-        const parts = Object.entries(opts.sort).map(([key, dir]) => `\`${key}\` ${dir === 1 ? "ASC" : "DESC"}`)
-        orderClause = ` ORDER BY ${parts.join(", ")}`
+        orderClause = ` ORDER BY ${sortToOrderBy(opts.sort)}`
       }
 
       const dataQuery = `SELECT * FROM ${table}${whereClause}${orderClause} LIMIT ${limit} OFFSET ${offset}`

@@ -1,6 +1,7 @@
 import Redis from "ioredis"
 import type { DbDriver, CollectionInfo, ColumnDef, CollectionPage, RedisKeyType } from "./types.ts"
 import { debug } from "../utils/debug.ts"
+import { validateRedisPattern } from "../utils/queryParser.ts"
 
 const REDIS_SCAN_COUNT = 100
 const REDIS_SIDEBAR_PAGE_SIZE = 20
@@ -359,7 +360,17 @@ export function createRedisDriver(): DbDriver {
       await redis.select(parseInt(opts.database, 10))
 
       const start = performance.now()
-      const pattern = opts.collection || "*"
+      
+      // Use rawQuery as pattern if provided, otherwise use collection name
+      let pattern = opts.collection || "*"
+      if (opts.rawQuery && opts.rawQuery.trim()) {
+        const validated = validateRedisPattern(opts.rawQuery)
+        if (!validated.valid) {
+          throw new Error(`Pattern validation error: ${validated.error}`)
+        }
+        pattern = validated.pattern
+      }
+      
       const limit = opts.limit ?? 50
       const offset = opts.offset ?? 0
 

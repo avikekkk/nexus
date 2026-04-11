@@ -1,5 +1,6 @@
 import { MongoClient, type Db } from "mongodb"
 import type { ConnectionConfig, DbDriver, CollectionInfo, ColumnDef } from "./types.ts"
+import { parseMongoFilter } from "../utils/queryParser.ts"
 
 export function createMongoDriver(): DbDriver {
   let client: MongoClient | null = null
@@ -70,7 +71,17 @@ export function createMongoDriver(): DbDriver {
     async query(opts) {
       const database = getDb(opts.database)
       const collection = database.collection(opts.collection)
-      const filter = opts.filter ?? {}
+      
+      // Handle rawQuery as JSON filter string
+      let filter = opts.filter ?? {}
+      if (opts.rawQuery && opts.rawQuery.trim()) {
+        const parsed = parseMongoFilter(opts.rawQuery)
+        if (parsed.error) {
+          throw new Error(`Filter parse error: ${parsed.error}`)
+        }
+        filter = parsed.filter ?? {}
+      }
+      
       const sort = opts.sort ?? {}
       const limit = opts.limit ?? 50
       const offset = opts.offset ?? 0

@@ -21,6 +21,9 @@ export interface TabData {
   error: string | null
   pageSize: number
   currentOffset: number
+  filter: string // JSON for Mongo, SQL for MySQL, pattern for Redis
+  sort: Record<string, 1 | -1> | null // Column sort state
+  customQuery: boolean // Whether user entered custom query vs using builder
 }
 
 interface AppState {
@@ -64,6 +67,9 @@ type AppAction =
   | { type: "NEXT_TAB" }
   | { type: "PREV_TAB" }
   | { type: "SET_TAB_DATA"; tabId: string; data: Partial<TabData> }
+  | { type: "SET_TAB_FILTER"; tabId: string; filter: string }
+  | { type: "SET_TAB_SORT"; tabId: string; sort: Record<string, 1 | -1> | null }
+  | { type: "SET_TAB_PAGE_SIZE"; tabId: string; pageSize: number }
   | { type: "CONSOLE_LOG"; entry: ConsoleEntry }
   | { type: "SET_ALL_DATABASES"; connectionId: string; databases: string[] }
   | { type: "SET_VISIBLE_DATABASES"; connectionId: string; databases: string[]; userSelected?: boolean }
@@ -86,7 +92,10 @@ interface AppContextValue {
   closeAllTabs: () => void
   nextTab: () => void
   prevTab: () => void
-  fetchTabData: (tabId: string, offset?: number, pageSize?: number) => void
+  fetchTabData: (tabId: string, offset?: number, pageSize?: number, filter?: string) => void
+  setTabFilter: (tabId: string, filter: string) => void
+  setTabSort: (tabId: string, sort: Record<string, 1 | -1> | null) => void
+  setTabPageSize: (tabId: string, pageSize: number) => void
   setVisibleDatabases: (connectionId: string, databases: string[]) => void
   loadMoreChildren: (nodeId: string) => void
   log: (level: LogLevel, source: LogSource, message: string) => void
@@ -246,6 +255,9 @@ function reducer(state: AppState, action: AppAction): AppState {
         error: null,
         pageSize: 20,
         currentOffset: 0,
+        filter: "",
+        sort: null,
+        customQuery: false,
       }
       tabData.set(action.tabId, { ...existing, ...action.data })
       return { ...state, tabData }
@@ -286,6 +298,32 @@ function reducer(state: AppState, action: AppAction): AppState {
       }
       return { ...state, consoleEntries: entries }
     }
+    case "SET_TAB_FILTER": {
+      const tabData = cloneMap(state.tabData)
+      const existing = tabData.get(action.tabId)
+      if (existing) {
+        tabData.set(action.tabId, { ...existing, filter: action.filter, customQuery: true })
+      }
+      return { ...state, tabData }
+    }
+    case "SET_TAB_SORT": {
+      const tabData = cloneMap(state.tabData)
+      const existing = tabData.get(action.tabId)
+      if (existing) {
+        tabData.set(action.tabId, { ...existing, sort: action.sort })
+      }
+      return { ...state, tabData }
+    }
+    case "SET_TAB_PAGE_SIZE": {
+      const tabData = cloneMap(state.tabData)
+      const existing = tabData.get(action.tabId)
+      if (existing) {
+        tabData.set(action.tabId, { ...existing, pageSize: action.pageSize })
+      }
+      return { ...state, tabData }
+    }
+    default:
+      return state
   }
 }
 
@@ -562,7 +600,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const fetchTabData = useCallback(
-    (tabId: string, offset?: number, pageSize?: number) => {
+    (tabId: string, offset?: number, pageSize?: number, filter?: string) => {
       const tab = state.tabs.find((t) => t.id === tabId)
       if (!tab) return
       const driver = driverMap.get(tab.connectionId)
@@ -572,8 +610,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const dbType = conn?.config.type ?? "unknown"
       const itemName = dbType === "mysql" ? "table" : dbType === "redis" ? "keys" : "collection"
 
-      const limit = pageSize ?? 20
-      const off = offset ?? 0
+      const tabDataEntry = state.tabData.get(tabId)
+      const limit = pageSize ?? tabDataEntry?.pageSize ?? 20
+      const off = offset ?? tabDataEntry?.currentOffset ?? 0
+      const activeFilter = filter !== undefined ? filter : (tabDataEntry?.filter || undefined)
 
       dispatch({
         type: "SET_TAB_DATA",
@@ -583,7 +623,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       log("info", "query", `Querying ${itemName} ${tab.collection} in database ${tab.database}...`)
       driver
-        .query({ database: tab.database, collection: tab.collection, limit, offset: off })
+        .query({
+          database: tab.database,
+          collection: tab.collection,
+          limit,
+          offset: off,
+          rawQuery: activeFilter || undefined,
+          sort: tabDataEntry?.sort || undefined,
+        })
         .then((result) => {
           dispatch({ type: "SET_TAB_DATA", tabId, data: { result, loading: false } })
           log("info", "query", `${result.query} — ${result.duration}ms, ${result.rows.length} rows`)
@@ -594,7 +641,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           log("error", "query", `Failed to query ${itemName} ${tab.collection}: ${msg}`)
         })
     },
-    [state.tabs, state.connections, log]
+    [state.tabs, state.connections, state.tabData, log]
   )
 
   const setVisibleDatabases = useCallback(
@@ -676,6 +723,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [state.connections, state.treeChildren, state.treeNextCursor, log]
   )
 
+  const setTabFilter = useCallback((tabId: string, filter: string) => {
+    dispatch({ type: "SET_TAB_FILTER", tabId, filter })
+  }, [])
+
+  const setTabSort = useCallback((tabId: string, sort: Record<string, 1 | -1> | null) => {
+    dispatch({ type: "SET_TAB_SORT", tabId, sort })
+  }, [])
+
+  const setTabPageSize = useCallback((tabId: string, pageSize: number) => {
+    dispatch({ type: "SET_TAB_PAGE_SIZE", tabId, pageSize })
+  }, [])
+
   return (
     <AppContext.Provider
       value={{
@@ -696,6 +755,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         nextTab,
         prevTab,
         fetchTabData,
+        setTabFilter,
+        setTabSort,
+        setTabPageSize,
         setVisibleDatabases,
         loadMoreChildren,
         log,

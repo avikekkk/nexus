@@ -1,7 +1,8 @@
-import { useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useKeyboard } from "@opentui/react"
 import { useApp } from "../../state/AppContext.tsx"
 import { DataTable } from "../main/DataTable.tsx"
+import { FilterBar } from "../main/FilterBar.tsx"
 import { DB_TYPE_ICONS, DB_TYPE_COLORS } from "../../constants/dbIcons.ts"
 
 interface MainPanelProps {
@@ -10,10 +11,11 @@ interface MainPanelProps {
 }
 
 export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
-  const { state, closeTab, nextTab, prevTab, fetchTabData } = useApp()
+  const { state, closeTab, nextTab, prevTab, fetchTabData, setTabFilter, setTabSort } = useApp()
   const borderColor = focused ? "#7aa2f7" : "#414868"
-  const { tabs, activeTabId, tabData } = state
+  const { tabs, activeTabId, tabData, connections } = state
   const fetchedTabs = useRef(new Set<string>())
+  const [filterBarFocused, setFilterBarFocused] = useState(false)
 
   // Auto-fetch data when a tab becomes active
   useEffect(() => {
@@ -28,6 +30,15 @@ export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
 
   useKeyboard((key) => {
     if (!focused) return
+
+    // Filter bar toggle: f or /
+    if ((key.name === "f" || key.name === "/") && activeTab && !filterBarFocused) {
+      setFilterBarFocused(true)
+      return
+    }
+
+    // Don't process other keys if filter bar is focused
+    if (filterBarFocused) return
 
     // Tab switching: ] = next, [ = prev
     if (key.name === "]") {
@@ -60,6 +71,8 @@ export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
   const activeData = activeTabId ? tabData.get(activeTabId) : undefined
+  const activeConnection = activeTab ? connections.find((c) => c.config.id === activeTab.connectionId) : undefined
+  const dbType = activeConnection?.config.type ?? "mongo"
 
   const handlePageChange = useCallback(
     (offset: number) => {
@@ -68,6 +81,45 @@ export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
       }
     },
     [activeTabId, activeData, fetchTabData]
+  )
+
+  const handleSortChange = useCallback(
+    (sort: Record<string, 1 | -1> | null) => {
+      if (activeTabId) {
+        setTabSort(activeTabId, sort)
+      }
+    },
+    [activeTabId, setTabSort]
+  )
+
+  const handleFilterExecute = useCallback((filter: string) => {
+    if (activeTabId) {
+      setTabFilter(activeTabId, filter)
+      fetchedTabs.current.delete(activeTabId)
+      fetchTabData(activeTabId, 0, undefined, filter) // Pass filter directly
+      setFilterBarFocused(false)
+    }
+  }, [activeTabId, setTabFilter, fetchTabData])
+
+  const handleFilterClear = useCallback(() => {
+    if (activeTabId) {
+      setTabFilter(activeTabId, "")
+      setTabSort(activeTabId, null)
+      fetchedTabs.current.delete(activeTabId)
+      fetchTabData(activeTabId, 0)
+    }
+  }, [activeTabId, setTabFilter, setTabSort, fetchTabData])
+
+  const handleColumnSort = useCallback(
+    (column: string, direction: 1 | -1) => {
+      if (activeTabId) {
+        // Single column sort (replace existing sort)
+        setTabSort(activeTabId, { [column]: direction })
+        fetchedTabs.current.delete(activeTabId)
+        fetchTabData(activeTabId, 0) // Reset to page 0 on sort change
+      }
+    },
+    [activeTabId, setTabSort, fetchTabData]
   )
 
   return (
@@ -135,14 +187,31 @@ export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
             </text>
           </box>
         ) : activeData?.result ? (
-          <DataTable
-            result={activeData.result}
-            focused={focused}
-            currentOffset={activeData.currentOffset}
-            pageSize={activeData.pageSize}
-            onPageChange={handlePageChange}
-            sidebarWidth={sidebarWidth}
-          />
+          <box flexGrow={1} flexDirection="column">
+            {/* FilterBar */}
+            <FilterBar
+              focused={filterBarFocused}
+              dbType={dbType}
+              currentFilter={activeData.filter || ""}
+              currentSort={activeData.sort}
+              onSortChange={handleSortChange}
+              onExecute={handleFilterExecute}
+              onClear={handleFilterClear}
+              onUnfocus={() => setFilterBarFocused(false)}
+            />
+            {/* DataTable */}
+            <DataTable
+              result={activeData.result}
+              focused={focused && !filterBarFocused}
+              currentOffset={activeData.currentOffset}
+              pageSize={activeData.pageSize}
+              currentSort={activeData.sort}
+              onPageChange={handlePageChange}
+              onColumnSort={handleColumnSort}
+              sidebarWidth={sidebarWidth}
+              filterBarActive={filterBarFocused}
+            />
+          </box>
         ) : (
           <box flexGrow={1} justifyContent="center" alignItems="center">
             <text fg="#565f89">Loading...</text>
