@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react"
 import { useKeyboard } from "@opentui/react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useApp } from "../../state/AppContext.tsx"
-import { flattenTreeNodes, formatMoreLabel, TreeRow, type FlatNode } from "../sidebar/TreeBrowser.tsx"
+import { flattenTreeNodes, TreeRow, type FlatNode } from "../sidebar/TreeBrowser.tsx"
 import { nodeId } from "../../state/tree.ts"
 import { DB_TYPE_ICONS, getIconColor, STATUS_INDICATORS } from "../../constants/dbIcons.ts"
 
@@ -29,7 +29,6 @@ function truncateName(name: string, maxLen: number): string {
 type RowItem =
   | { kind: "connection"; index: number; connectionId: string }
   | { kind: "tree"; node: FlatNode }
-  | { kind: "more"; connectionId: string; totalCount?: number; visibleCount: number; parentType: "connection" | "database"; parentId: string }
 
 export function Sidebar({
   width,
@@ -44,7 +43,7 @@ export function Sidebar({
   onShowSearchDialog,
   onFocusMain,
 }: SidebarProps) {
-  const { state, connectTo, disconnectFrom, removeConnection, toggleExpand, openCollection, loadMoreChildren } = useApp()
+  const { state, connectTo, disconnectFrom, removeConnection, toggleExpand, openCollection } = useApp()
   const [selectedIndex, setSelectedIndex] = useState(0)
   const scrollRef = useRef<ScrollBoxRenderable | null>(null)
   const borderColor = focused ? "#7aa2f7" : "#414868"
@@ -65,34 +64,7 @@ export function Sidebar({
       if (conn.status === "connected") {
         const treeNodes = flattenTreeNodes(conn, treeState)
         for (const node of treeNodes) {
-          if (node.type === "more") {
-            items.push({
-              kind: "more",
-              connectionId: node.connectionId,
-              totalCount: node.totalCount,
-              visibleCount: node.visibleCount!,
-              parentType: "database",
-              parentId: node.parentId!,
-            })
-          } else {
-            items.push({ kind: "tree", node })
-          }
-        }
-        const allDbs = state.allDatabases.get(conn.config.id)
-        const visibleDbs = state.visibleDatabases.get(conn.config.id)
-        const isUserSelected = state.userSelectedDatabases.has(conn.config.id)
-        if (allDbs && visibleDbs && allDbs.length > visibleDbs.length && !isUserSelected) {
-          const connNid = nodeId(conn.config.id)
-          if (state.treeExpanded.has(connNid)) {
-            items.push({
-              kind: "more",
-              connectionId: conn.config.id,
-              totalCount: allDbs.length,
-              visibleCount: visibleDbs.length,
-              parentType: "connection",
-              parentId: connNid,
-            })
-          }
+          items.push({ kind: "tree", node })
         }
       }
     })
@@ -104,9 +76,6 @@ export function Sidebar({
     state.treeChildren,
     state.treeVisibleCount,
     state.treeNextCursor,
-    state.allDatabases,
-    state.visibleDatabases,
-    state.userSelectedDatabases,
   ])
 
   // Auto-expand connection tree when first connected
@@ -202,8 +171,6 @@ export function Sidebar({
         if (conn && conn.status === "connected") connectionId = conn.config.id
       } else if (row.kind === "tree") {
         connectionId = row.node.connectionId
-      } else if (row.kind === "more") {
-        connectionId = row.connectionId
       }
       if (connectionId && state.allDatabases.has(connectionId)) {
         onShowDatabasePicker(connectionId)
@@ -219,16 +186,7 @@ export function Sidebar({
       return
     }
 
-    if (key.name === "m" || key.name === "return") {
-      if (row.kind === "more") {
-        if (row.parentType === "database" && row.parentId) {
-          loadMoreChildren(row.parentId)
-        } else if (row.parentType === "connection") {
-          onShowDatabasePicker(row.connectionId)
-        }
-        return
-      }
-
+    if (key.name === "return") {
       if (row.kind === "connection") {
         const conn = state.connections[row.index]
         if (!conn) return
@@ -359,18 +317,7 @@ export function Sidebar({
               )
             }
 
-            if (row.kind === "tree") {
-              return <TreeRow key={row.node.id} node={row.node} isSelected={isSelected} maxWidth={width - 4} />
-            }
-
-            const hint = row.parentType === "connection" ? "[e] pick" : "[m] load"
-            return (
-              <box key={`more-${row.parentId}`} paddingX={1} backgroundColor={bg}>
-                <text fg="#7aa2f7">
-                  {"    "}… {formatMoreLabel(row.totalCount, row.visibleCount)} <span fg="#565f89">{hint}</span>
-                </text>
-              </box>
-            )
+            return <TreeRow key={row.node.id} node={row.node} isSelected={isSelected} maxWidth={width - 4} />
           })}
         </scrollbox>
       )}
@@ -390,7 +337,6 @@ export function Sidebar({
         {state.connections.length > 0 && (
           <text fg="#414868">
             <span fg="#7aa2f7">[Enter]</span> Open{"  "}
-            <span fg="#7aa2f7">[m]</span> More{"  "}
             <span fg="#7aa2f7">[x]</span> Del
           </text>
         )}

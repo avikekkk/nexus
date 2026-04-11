@@ -43,6 +43,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   const [searchNextCursor, setSearchNextCursor] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchIdRef = useRef(0) // to discard stale responses
+  const autoLoadCursorRef = useRef<string | null>(null)
 
   // Edit form state
   const currentConnection = state.connections.find((c) => c.config.id === connectionId)
@@ -137,6 +138,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
       setCursorIndex(0)
+      autoLoadCursorRef.current = null
       doSearch(searchQuery)
     }, SEARCH_DEBOUNCE_MS)
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
@@ -158,6 +160,16 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   }, [isSearch, allItems, searchQuery])
 
   const displayItems = filteredItems
+
+  useEffect(() => {
+    if (!isSearch || !searchNextCursor || searchLoading || displayItems.length === 0) return
+    const preloadThreshold = Math.max(0, displayItems.length - 3)
+    if (cursorIndex < preloadThreshold) return
+    if (autoLoadCursorRef.current === searchNextCursor) return
+
+    autoLoadCursorRef.current = searchNextCursor
+    doSearch(searchQuery, searchNextCursor, true)
+  }, [isSearch, searchNextCursor, searchLoading, cursorIndex, displayItems.length, doSearch, searchQuery])
 
   // Reset cursor when search results change
   useEffect(() => {
@@ -365,12 +377,6 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       return
     }
 
-    // In search mode: m loads more results
-    if (isSearch && key.name === "m" && searchNextCursor && !searchLoading) {
-      doSearch(searchQuery, searchNextCursor, true)
-      return
-    }
-
     // In select mode: Space/Return toggles selection
     if (!isSearch && (key.name === "space" || key.name === "return")) {
       const db = displayItems[cursorIndex]
@@ -525,12 +531,6 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
               <text fg="#414868">
                 <span fg="#565f89">[Enter]</span> Open {"  "}
                 <span fg="#565f89">[/]</span> Search
-                {searchNextCursor && (
-                  <>
-                    {"  "}
-                    <span fg="#565f89">[m]</span> More
-                  </>
-                )}
               </text>
               <text fg="#414868">
                 <span fg="#565f89">[j/k]</span> Navigate {"  "}

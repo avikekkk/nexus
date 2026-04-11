@@ -1,5 +1,5 @@
 import { MongoClient, type Db } from "mongodb"
-import type { ConnectionConfig, DbDriver, CollectionInfo, ColumnDef } from "./types.ts"
+import type { ConnectionConfig, DbDriver, CollectionInfo, ColumnDef, CollectionPage } from "./types.ts"
 import { parseMongoFilter } from "../utils/queryParser.ts"
 
 export function createMongoDriver(): DbDriver {
@@ -66,6 +66,27 @@ export function createMongoDriver(): DbDriver {
       }
 
       return infos
+    },
+
+    async searchCollectionsPage(db, query, cursor = null, limit = 200): Promise<CollectionPage> {
+      const database = getDb(db)
+      const offset = Math.max(0, Number.parseInt(cursor ?? "0", 10) || 0)
+      const normalizedQuery = query.trim().toLowerCase()
+
+      const collections = await database.listCollections().toArray()
+      const filtered = normalizedQuery
+        ? collections.filter((c) => c.name.toLowerCase().includes(normalizedQuery))
+        : collections
+
+      const pageCollections = filtered.slice(offset, offset + limit)
+      const items: CollectionInfo[] = pageCollections.map((c) => ({ name: c.name, type: "collection" }))
+      const nextOffset = offset + items.length
+
+      return {
+        items,
+        nextCursor: nextOffset < filtered.length ? String(nextOffset) : null,
+        totalCount: filtered.length,
+      }
     },
 
     async query(opts) {

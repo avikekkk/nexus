@@ -14,15 +14,10 @@ function formatCount(count?: number): string {
   return ` ${count}`
 }
 
-export function formatMoreLabel(totalCount?: number, visibleCount?: number): string {
-  if (totalCount == null || visibleCount == null) return "more"
-  return `+${Math.max(0, totalCount - visibleCount)} more`
-}
-
 export interface FlatNode {
   id: string
   label: string
-  type: TreeNode["type"] | "more"
+  type: TreeNode["type"]
   depth: number
   isExpanded: boolean
   isLoading: boolean
@@ -32,10 +27,8 @@ export interface FlatNode {
   database?: string
   collection?: string
   count?: number
-  parentId?: string // for "more" nodes: the nodeId of the parent database
-  totalCount?: number // for "more" nodes
-  visibleCount?: number // for "more" nodes
   redisType?: RedisKeyType // for Redis keys
+  isHint?: boolean
 }
 
 interface TreeStateSlice {
@@ -146,11 +139,12 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
           })
         }
 
-        if (hasMore && connection.config.type !== "redis") {
+        if (hasMore) {
+          const remaining = Math.max(0, children.length - visibleCount)
           flat.push({
-            id: `${dbNodeId}/__more`,
-            label: `+${children.length - visibleCount} more`,
-            type: "more",
+            id: `${dbNodeId}/__more_hint`,
+            label: remaining > 0 ? `+${remaining} more, use search` : "+more, use search",
+            type: "collection",
             depth: 2,
             isExpanded: false,
             isLoading: false,
@@ -158,11 +152,10 @@ export function flattenTreeNodes(connection: ConnectionState, treeState: TreeSta
             connectionId: connId,
             connectionType: connType,
             database: db.database,
-            parentId: dbNodeId,
-            totalCount: children.length > visibleCount ? children.length : undefined,
-            visibleCount,
+            isHint: true,
           })
         }
+
       }
     }
   }
@@ -189,14 +182,12 @@ export function TreeRow({
   const bg = isSelected ? "#283457" : "transparent"
   const fg = isSelected ? "#c0caf5" : "#a9b1d6"
 
-  // Render "more" row differently
-  if (node.type === "more") {
+  if (node.isHint) {
     return (
       <box flexDirection="row" paddingX={1} backgroundColor={bg}>
-        <text fg={fg}>
+        <text fg="#565f89">
           {indent}
-          <span fg="#7aa2f7">… {formatMoreLabel(node.totalCount, node.visibleCount)}</span>
-          <span fg="#565f89"> [m] load</span>
+          {node.label}
         </text>
       </box>
     )

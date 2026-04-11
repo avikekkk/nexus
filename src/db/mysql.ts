@@ -1,5 +1,5 @@
 import mysql from "mysql2/promise"
-import type { DbDriver, ColumnDef } from "./types.ts"
+import type { DbDriver, ColumnDef, CollectionPage } from "./types.ts"
 import { parseMySQLQuery, sortToOrderBy } from "../utils/queryParser.ts"
 
 export function createMysqlDriver(): DbDriver {
@@ -47,6 +47,36 @@ export function createMysqlDriver(): DbDriver {
         type: "table" as const,
         count: r.Rows ?? undefined,
       }))
+    },
+
+    async searchCollectionsPage(db, query, cursor = null, limit = 200): Promise<CollectionPage> {
+      if (!connection) throw new Error("Not connected")
+
+      const offset = Math.max(0, Number.parseInt(cursor ?? "0", 10) || 0)
+      const normalizedQuery = query.trim()
+
+      const searchClause = normalizedQuery ? " AND TABLE_NAME LIKE ?" : ""
+      const searchParams: unknown[] = normalizedQuery ? [`%${normalizedQuery}%`] : []
+
+      const [countRows] = await connection.query(
+        `SELECT COUNT(*) AS cnt FROM information_schema.TABLES WHERE TABLE_SCHEMA = ?${searchClause}`,
+        [db, ...searchParams]
+      )
+
+      const [rows] = await connection.query(
+        `SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = ?${searchClause} ORDER BY TABLE_NAME LIMIT ? OFFSET ?`,
+        [db, ...searchParams, limit, offset]
+      )
+
+      const items = (rows as Array<{ name: string }>).map((r) => ({ name: r.name, type: "table" as const }))
+      const totalCount = (countRows as Array<{ cnt: number }>)[0]?.cnt ?? items.length
+      const nextOffset = offset + items.length
+
+      return {
+        items,
+        nextCursor: nextOffset < totalCount ? String(nextOffset) : null,
+        totalCount,
+      }
     },
 
     async query(opts) {
