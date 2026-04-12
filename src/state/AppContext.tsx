@@ -93,6 +93,7 @@ interface AppContextValue {
   nextTab: () => void
   prevTab: () => void
   fetchTabData: (tabId: string, offset?: number, pageSize?: number, filter?: string) => void
+  updateTabCell: (tabId: string, row: Record<string, unknown>, field: string, value: unknown) => Promise<void>
   setTabFilter: (tabId: string, filter: string) => void
   setTabSort: (tabId: string, sort: Record<string, 1 | -1> | null) => void
   setTabPageSize: (tabId: string, pageSize: number) => void
@@ -644,6 +645,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [state.tabs, state.connections, state.tabData, log]
   )
 
+  const updateTabCell = useCallback(
+    async (tabId: string, row: Record<string, unknown>, field: string, value: unknown) => {
+      const tab = state.tabs.find((t) => t.id === tabId)
+      if (!tab) throw new Error("Tab not found")
+
+      const driver = driverMap.get(tab.connectionId)
+      if (!driver) throw new Error("No active driver for tab connection")
+      if (!driver.updateField) throw new Error("This database driver does not support editing")
+
+      log("info", "query", `Applying edit to ${tab.collection}.${field}...`)
+
+      const result = await driver.updateField({
+        database: tab.database,
+        collection: tab.collection,
+        row,
+        field,
+        value,
+      })
+
+      log("success", "query", `${result.query} — affected ${result.affected}`)
+
+      const tabDataEntry = state.tabData.get(tabId)
+      fetchTabData(tabId, tabDataEntry?.currentOffset ?? 0, tabDataEntry?.pageSize)
+    },
+    [state.tabs, state.tabData, fetchTabData, log]
+  )
+
   const setVisibleDatabases = useCallback(
     (connectionId: string, databases: string[]) => {
       const conn = state.connections.find((c) => c.config.id === connectionId)
@@ -755,6 +783,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         nextTab,
         prevTab,
         fetchTabData,
+        updateTabCell,
         setTabFilter,
         setTabSort,
         setTabPageSize,

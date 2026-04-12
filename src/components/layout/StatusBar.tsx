@@ -40,10 +40,11 @@ function getShortcuts(focusZone: FocusZone, showQueryLog: boolean): Shortcut[] {
       { key: "]/[", desc: "Switch Tab" },
       { key: "w", desc: "Close Tab" },
       { key: "r", desc: "Reload" },
-      { key: "Enter", desc: "View Cell" },
+      { key: "Enter/v", desc: "View Cell" },
     ],
     detail: [
-      { key: "Esc", desc: "Close" },
+      { key: "Ctrl+A", desc: "Apply" },
+      { key: "Esc/q", desc: "Close" },
       { key: "Select", desc: "Copy" },
     ],
     querylog: [

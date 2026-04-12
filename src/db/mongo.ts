@@ -1,5 +1,13 @@
-import { MongoClient, type Db } from "mongodb"
-import type { ConnectionConfig, DbDriver, CollectionInfo, ColumnDef, CollectionPage } from "./types.ts"
+import { MongoClient, ObjectId, type Db } from "mongodb"
+import type {
+  ConnectionConfig,
+  DbDriver,
+  CollectionInfo,
+  ColumnDef,
+  CollectionPage,
+  UpdateFieldOpts,
+  UpdateFieldResult,
+} from "./types.ts"
 import { parseMongoFilter } from "../utils/queryParser.ts"
 
 export function createMongoDriver(): DbDriver {
@@ -20,6 +28,17 @@ export function createMongoDriver(): DbDriver {
   function getDb(name: string): Db {
     if (!client) throw new Error("Not connected")
     return client.db(name)
+  }
+
+  function getMongoRowId(row: Record<string, unknown>): unknown {
+    if (!("_id" in row)) {
+      throw new Error("MongoDB edit requires _id field in selected row")
+    }
+    const id = row._id
+    if (typeof id === "string" && ObjectId.isValid(id)) {
+      return new ObjectId(id)
+    }
+    return id
   }
 
   return {
@@ -91,7 +110,7 @@ export function createMongoDriver(): DbDriver {
 
     async query(opts) {
       const database = getDb(opts.database)
-      const collection = database.collection(opts.collection)
+      const collection = database.collection<Record<string, unknown>>(opts.collection)
       
       // Handle rawQuery as JSON filter string
       let filter = opts.filter ?? {}
@@ -129,6 +148,17 @@ export function createMongoDriver(): DbDriver {
       const queryStr = `db.${opts.collection}.find(${filterStr})${sortStr}.skip(${offset}).limit(${limit})`
 
       return { columns, rows, totalCount, duration, query: queryStr }
+    },
+
+    async updateField(opts: UpdateFieldOpts): Promise<UpdateFieldResult> {
+      const database = getDb(opts.database)
+      const collection = database.collection(opts.collection)
+      const rowId = getMongoRowId(opts.row)
+
+      const result = await collection.updateOne({ _id: rowId as any }, { $set: { [opts.field]: opts.value } })
+      const query = `db.${opts.collection}.updateOne({_id:${JSON.stringify(rowId)}}, {$set:{${opts.field}:...}})`
+
+      return { query, affected: result.modifiedCount }
     },
   }
 }

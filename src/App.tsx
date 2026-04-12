@@ -4,6 +4,7 @@ import type { Selection } from "@opentui/core"
 import { Sidebar } from "./components/layout/Sidebar.tsx"
 import { MainPanel } from "./components/layout/MainPanel.tsx"
 import { DetailPanel } from "./components/layout/DetailPanel.tsx"
+import type { SelectedCell } from "./components/main/DataTable.tsx"
 import { debug } from "./utils/debug.ts"
 import { Console } from "./components/layout/QueryLog.tsx"
 import { StatusBar } from "./components/layout/StatusBar.tsx"
@@ -16,19 +17,27 @@ export type FocusZone = "sidebar" | "main" | "detail" | "querylog"
 
 const ZONES: FocusZone[] = ["sidebar", "main", "detail", "querylog"]
 
+interface DetailState {
+  tabId: string
+  tabLabel: string
+  dbType: "mongo" | "mysql" | "redis"
+  cell: SelectedCell
+}
+
 export function App() {
   const renderer = useRenderer()
   const { width, height } = useTerminalDimensions()
-  const { state, addConnection } = useApp()
+  const { state, addConnection, updateTabCell } = useApp()
   const [focusZone, setFocusZone] = useState<FocusZone>("sidebar")
   const [showQueryLog, setShowQueryLog] = useState(true)
-  const [showDetail] = useState(false)
+  const [detailState, setDetailState] = useState<DetailState | null>(null)
   const [showConnectionForm, setShowConnectionForm] = useState(false)
   const [databasePickerConnectionId, setDatabasePickerConnectionId] = useState<string | null>(null)
   const [searchDialogDb, setSearchDialogDb] = useState<{ connectionId: string; connectionName: string; database: string } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
   const isNarrow = width < 100
+  const showDetail = detailState !== null
 
   const showToast = useCallback((message: string) => {
     setToast(message)
@@ -120,9 +129,37 @@ export function App() {
           onFocusMain={() => setFocusZone("main")}
         />
 
-        <MainPanel focused={focusZone === "main"} sidebarWidth={sidebarWidth} />
+        <MainPanel
+          focused={focusZone === "main"}
+          sidebarWidth={sidebarWidth}
+          onOpenDetail={(tabId, cell) => {
+            const tab = state.tabs.find((t) => t.id === tabId)
+            const conn = tab ? state.connections.find((c) => c.config.id === tab.connectionId) : undefined
+            if (!tab || !conn) return
+            setDetailState({ tabId, tabLabel: `${tab.database}.${tab.collection}`, dbType: conn.config.type, cell })
+            setFocusZone("detail")
+          }}
+        />
 
-        {showDetail && <DetailPanel width={detailWidth} focused={focusZone === "detail"} />}
+        {showDetail && detailState && (
+          <DetailPanel
+            width={detailWidth}
+            focused={focusZone === "detail"}
+            dbType={detailState.dbType}
+            tabLabel={detailState.tabLabel}
+            fieldName={detailState.cell.columnName}
+            rowData={detailState.cell.row}
+            originalValue={detailState.cell.value}
+            onClose={() => {
+              setDetailState(null)
+              setFocusZone("main")
+            }}
+            onApply={async (value) => {
+              await updateTabCell(detailState.tabId, detailState.cell.row, detailState.cell.columnName, value)
+              setDetailState((prev) => (prev ? { ...prev, cell: { ...prev.cell, value } } : prev))
+            }}
+          />
+        )}
       </box>
 
       {/* Console */}

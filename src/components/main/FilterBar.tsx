@@ -34,11 +34,11 @@ function getInputAfterDeleteWord(input: string, cursor: number): InputEditResult
 
   let start = cursor
 
-  while (start > 0 && /\s/.test(input[start - 1])) {
+  while (start > 0 && /\s/.test(input[start - 1] ?? "")) {
     start -= 1
   }
 
-  while (start > 0 && /[a-zA-Z0-9_]/.test(input[start - 1])) {
+  while (start > 0 && /[a-zA-Z0-9_]/.test(input[start - 1] ?? "")) {
     start -= 1
   }
 
@@ -80,7 +80,7 @@ function getInputAfterDelete(input: string, cursor: number): InputEditResult {
     return { value: input, cursor }
   }
 
-  const currentChar = input[cursor]
+  const currentChar = input[cursor] ?? ""
   const nextChar = input[cursor + 1] ?? ""
 
   if (AUTO_PAIR_MAP[currentChar] === nextChar) {

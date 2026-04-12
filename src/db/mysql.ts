@@ -1,5 +1,5 @@
 import mysql from "mysql2/promise"
-import type { DbDriver, ColumnDef, CollectionPage } from "./types.ts"
+import type { DbDriver, ColumnDef, CollectionPage, UpdateFieldOpts, UpdateFieldResult } from "./types.ts"
 import { parseMySQLQuery, sortToOrderBy } from "../utils/queryParser.ts"
 
 export function createMysqlDriver(): DbDriver {
@@ -150,6 +150,47 @@ export function createMysqlDriver(): DbDriver {
       const totalCount = (countRows as Array<{ cnt: number }>)[0]?.cnt ?? resultRows.length
 
       return { columns, rows: resultRows, totalCount, duration, query: dataQuery }
+    },
+
+    async updateField(opts: UpdateFieldOpts): Promise<UpdateFieldResult> {
+      if (!connection) throw new Error("Not connected")
+
+      const [pkRows] = await connection.query(
+        `SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY' ORDER BY ORDINAL_POSITION`,
+        [opts.database, opts.collection]
+      )
+
+      const primaryKeys = (pkRows as Array<{ COLUMN_NAME: string }>).map((row) => row.COLUMN_NAME)
+      if (primaryKeys.length === 0) {
+        throw new Error("Cannot edit row: table has no primary key")
+      }
+
+      const setSql = `\`${opts.field}\` = ?`
+      const whereParts: string[] = []
+      const whereValues: unknown[] = []
+
+      for (const key of primaryKeys) {
+        if (!(key in opts.row)) {
+          throw new Error(`Cannot edit row: missing primary key column ${key}`)
+        }
+        const keyValue = opts.row[key]
+        if (keyValue === null) {
+          whereParts.push(`\`${key}\` IS NULL`)
+        } else {
+          whereParts.push(`\`${key}\` = ?`)
+          whereValues.push(keyValue)
+        }
+      }
+
+      await connection.query(`USE \`${opts.database}\``)
+
+      const sql = `UPDATE \`${opts.collection}\` SET ${setSql} WHERE ${whereParts.join(" AND ")} LIMIT 1`
+      const [result] = await connection.query(sql, [opts.value, ...whereValues])
+
+      return {
+        query: sql,
+        affected: (result as mysql.ResultSetHeader).affectedRows,
+      }
     },
   }
 }

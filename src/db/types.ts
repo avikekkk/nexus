@@ -53,6 +53,19 @@ export interface QueryResult {
   query: string
 }
 
+export interface UpdateFieldOpts {
+  database: string
+  collection: string
+  row: Record<string, unknown>
+  field: string
+  value: unknown
+}
+
+export interface UpdateFieldResult {
+  query: string
+  affected: number
+}
+
 export interface DbDriver {
   type: DbType
   connect(config: ConnectionConfig): Promise<void>
@@ -64,6 +77,7 @@ export interface DbDriver {
   searchCollectionsPage?(db: string, query: string, cursor?: string | null, limit?: number): Promise<CollectionPage>
   countCollections?(db: string): Promise<number>
   query(opts: QueryOpts): Promise<QueryResult>
+  updateField?(opts: UpdateFieldOpts): Promise<UpdateFieldResult>
 }
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected" | "error"

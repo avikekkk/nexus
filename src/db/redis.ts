@@ -1,5 +1,13 @@
 import Redis from "ioredis"
-import type { DbDriver, CollectionInfo, ColumnDef, CollectionPage, RedisKeyType } from "./types.ts"
+import type {
+  DbDriver,
+  CollectionInfo,
+  ColumnDef,
+  CollectionPage,
+  RedisKeyType,
+  UpdateFieldOpts,
+  UpdateFieldResult,
+} from "./types.ts"
 import { debug } from "../utils/debug.ts"
 import { validateRedisPattern } from "../utils/queryParser.ts"
 
@@ -417,6 +425,46 @@ export function createRedisDriver(): DbDriver {
 
       const duration = Math.round(performance.now() - start)
       return { columns, rows, totalCount: allKeys.length, duration, query: `SCAN 0 MATCH ${pattern} COUNT 100` }
+    },
+
+    async updateField(opts: UpdateFieldOpts): Promise<UpdateFieldResult> {
+      if (!redis) throw new Error("Not connected")
+      await redis.select(parseInt(opts.database, 10))
+
+      const key = opts.collection
+      const keyType = await redis.type(key)
+
+      if (opts.field === "ttl" || opts.field === "key" || opts.field === "type" || opts.field === "index") {
+        throw new Error(`Editing field '${opts.field}' is not supported`)
+      }
+
+      if (keyType === "string") {
+        if (opts.field !== "value") throw new Error("Only 'value' field can be edited for Redis strings")
+        await redis.set(key, String(opts.value ?? ""))
+        return { query: `SET ${key} <value>`, affected: 1 }
+      }
+
+      if (keyType === "hash") {
+        if (opts.field !== "value") throw new Error("Only 'value' field can be edited for Redis hashes")
+        const hashField = opts.row.field
+        if (typeof hashField !== "string" || hashField.length === 0) {
+          throw new Error("Missing hash field name in selected row")
+        }
+        await redis.hset(key, hashField, String(opts.value ?? ""))
+        return { query: `HSET ${key} ${hashField} <value>`, affected: 1 }
+      }
+
+      if (keyType === "list") {
+        if (opts.field !== "value") throw new Error("Only 'value' field can be edited for Redis lists")
+        const index = Number(opts.row.index)
+        if (Number.isNaN(index)) {
+          throw new Error("Missing list index in selected row")
+        }
+        await redis.lset(key, index, String(opts.value ?? ""))
+        return { query: `LSET ${key} ${index} <value>`, affected: 1 }
+      }
+
+      throw new Error(`Editing is not supported for Redis type '${keyType}'`)
     },
   }
 }

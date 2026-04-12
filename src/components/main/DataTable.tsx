@@ -3,13 +3,21 @@ import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { MouseEvent as TuiMouseEvent } from "@opentui/core"
 import type { QueryResult, ColumnDef } from "../../db/types.ts"
 
+export interface SelectedCell {
+  rowIndex: number
+  colIndex: number
+  columnName: string
+  value: unknown
+  row: Record<string, unknown>
+}
+
 interface DataTableProps {
   result: QueryResult
   focused: boolean
   currentOffset: number
   pageSize: number
   onPageChange?: (offset: number) => void
-  onCellSelect?: (row: number, col: number, value: unknown) => void
+  onCellSelect?: (cell: SelectedCell) => void
   onColumnSort?: (column: string, direction: 1 | -1) => void
   currentSort?: Record<string, 1 | -1> | null
   sidebarWidth?: number
@@ -307,6 +315,21 @@ export function DataTable({
     [rows.length, ensureSelectionVisible]
   )
 
+  const emitSelectedCell = useCallback(() => {
+    if (!onCellSelect) return
+    const row = rows[selectedRow]
+    const column = columns[selectedCol]
+    if (!row || !column) return
+
+    onCellSelect({
+      rowIndex: selectedRow,
+      colIndex: selectedCol,
+      columnName: column.name,
+      value: row[column.name],
+      row,
+    })
+  }, [onCellSelect, rows, columns, selectedRow, selectedCol])
+
   useKeyboard((key) => {
     if (!focused) return
 
@@ -364,10 +387,12 @@ export function DataTable({
 
     // Select cell
     if (key.name === "return") {
-      if (onCellSelect && rows[selectedRow] && columns[selectedCol]) {
-        const value = rows[selectedRow][columns[selectedCol].name]
-        onCellSelect(selectedRow, selectedCol, value)
-      }
+      emitSelectedCell()
+      return
+    }
+
+    if (key.name === "v") {
+      emitSelectedCell()
       return
     }
 

@@ -1,16 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useKeyboard } from "@opentui/react"
 import { useApp } from "../../state/AppContext.tsx"
-import { DataTable } from "../main/DataTable.tsx"
+import { DataTable, type SelectedCell } from "../main/DataTable.tsx"
 import { FilterBar } from "../main/FilterBar.tsx"
 import { DB_TYPE_ICONS, DB_TYPE_COLORS } from "../../constants/dbIcons.ts"
 
 interface MainPanelProps {
   focused: boolean
   sidebarWidth: number
+  onOpenDetail: (tabId: string, cell: SelectedCell) => void
 }
 
-export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
+export function MainPanel({ focused, sidebarWidth, onOpenDetail }: MainPanelProps) {
   const { state, closeTab, nextTab, prevTab, fetchTabData, setTabFilter, setTabSort } = useApp()
   const borderColor = focused ? "#7aa2f7" : "#414868"
   const { tabs, activeTabId, tabData, connections } = state
@@ -122,6 +123,14 @@ export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
     [activeTabId, setTabSort, fetchTabData]
   )
 
+  const handleCellSelect = useCallback(
+    (cell: SelectedCell) => {
+      if (!activeTabId) return
+      onOpenDetail(activeTabId, cell)
+    },
+    [activeTabId, onOpenDetail]
+  )
+
   return (
     <box flexGrow={1} flexDirection="column" border borderStyle="rounded" borderColor={borderColor}>
       {/* Tab bar */}
@@ -208,6 +217,7 @@ export function MainPanel({ focused, sidebarWidth }: MainPanelProps) {
               currentSort={activeData.sort}
               onPageChange={handlePageChange}
               onColumnSort={handleColumnSort}
+              onCellSelect={handleCellSelect}
               sidebarWidth={sidebarWidth}
               filterBarActive={filterBarFocused}
             />
