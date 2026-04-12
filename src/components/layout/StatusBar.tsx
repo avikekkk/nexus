@@ -4,6 +4,7 @@ interface StatusBarProps {
   focusZone: FocusZone
   showQueryLog: boolean
   showDetail: boolean
+  width: number
 }
 
 const KEY_STYLE = "#7aa2f7"
@@ -32,13 +33,10 @@ function getShortcuts(focusZone: FocusZone, showQueryLog: boolean): Shortcut[] {
       { key: "h/l", desc: "Collapse/Expand" },
       { key: "e", desc: "Pick DBs" },
       { key: "s", desc: "Search" },
-      { key: "m", desc: "Load More" },
       { key: "d", desc: "Disconnect" },
       { key: "x", desc: "Remove" },
     ],
     main: [
-      { key: "f//", desc: "Filter" },
-      { key: "s", desc: "Sort Col" },
       { key: "]/[", desc: "Switch Tab" },
       { key: "w", desc: "Close Tab" },
       { key: "r", desc: "Reload" },
@@ -58,12 +56,30 @@ function getShortcuts(focusZone: FocusZone, showQueryLog: boolean): Shortcut[] {
   return [...(contextual[focusZone] ?? []), ...base]
 }
 
-export function StatusBar({ focusZone, showQueryLog }: StatusBarProps) {
+function fitShortcuts(shortcuts: Shortcut[], width: number): Shortcut[] {
+  if (width <= 0) return []
+
+  const fitted: Shortcut[] = []
+  let used = 0
+
+  for (let i = 0; i < shortcuts.length; i++) {
+    const s = shortcuts[i]!
+    const piece = `${i > 0 ? SEP : ""}[${s.key}] ${s.desc}`
+    if (used + piece.length > width - 1) break
+    fitted.push(s)
+    used += piece.length
+  }
+
+  return fitted
+}
+
+export function StatusBar({ focusZone, showQueryLog, width }: StatusBarProps) {
   const shortcuts = getShortcuts(focusZone, showQueryLog)
+  const visibleShortcuts = fitShortcuts(shortcuts, width)
 
   return (
     <box height={1} flexDirection="row" paddingX={1} gap={0}>
-      {shortcuts.map((s, i) => (
+      {visibleShortcuts.map((s, i) => (
         <text key={s.key}>
           {i > 0 ? SEP : ""}
           <span fg={KEY_STYLE}>[{s.key}]</span>

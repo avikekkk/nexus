@@ -268,7 +268,7 @@ export function App() {
       {showQueryLog && <Console height={queryLogHeight} focused={focusZone === "querylog"} />}
 
       {/* Status bar */}
-      <StatusBar focusZone={focusZone} showQueryLog={showQueryLog} showDetail={showDetail} />
+      <StatusBar focusZone={focusZone} showQueryLog={showQueryLog} showDetail={showDetail} width={width} />
 
       {/* Bottom margin */}
       <box height={1} />
