@@ -617,8 +617,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!tab) return
       const driver = driverMap.get(tab.connectionId)
       if (!driver) return
-
       const conn = state.connections.find((c) => c.config.id === tab.connectionId)
+      if (!conn) return
+
       const dbType = conn?.config.type ?? "unknown"
       const itemName = dbType === "mysql" ? "table" : dbType === "redis" ? "keys" : "collection"
 
@@ -634,8 +635,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
 
       log("info", "query", `Querying ${itemName} ${tab.collection} in database ${tab.database}...`)
-      driver
-        .query({
+      ;(async () => {
+        if (!driver.isConnected()) {
+          log("warning", "connection", `Connection dropped for ${conn.config.name}, reconnecting...`)
+          await driver.connect(conn.config)
+          log("success", "connection", `Reconnected to ${conn.config.name}`)
+        }
+
+        return driver.query({
           database: tab.database,
           collection: tab.collection,
           limit,
@@ -643,6 +650,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           rawQuery: activeFilter || undefined,
           sort: tabDataEntry?.sort || undefined,
         })
+      })()
         .then((result) => {
           dispatch({ type: "SET_TAB_DATA", tabId, data: { result, loading: false } })
           log("info", "query", `${result.query} — ${result.duration}ms, ${result.rows.length} rows`)
