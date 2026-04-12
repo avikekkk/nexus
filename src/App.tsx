@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
 import type { Selection } from "@opentui/core"
 import { Sidebar } from "./components/layout/Sidebar.tsx"
@@ -12,6 +12,7 @@ import { ConnectionForm } from "./components/sidebar/ConnectionForm.tsx"
 import { DatabasePicker } from "./components/sidebar/DatabasePicker.tsx"
 import { useApp } from "./state/AppContext.tsx"
 import { Toast } from "./components/layout/Toast.tsx"
+import { CommandPalette, type CommandItem } from "./components/layout/CommandPalette.tsx"
 
 export type FocusZone = "sidebar" | "main" | "detail" | "querylog"
 
@@ -35,6 +36,9 @@ export function App() {
   const [databasePickerConnectionId, setDatabasePickerConnectionId] = useState<string | null>(null)
   const [searchDialogDb, setSearchDialogDb] = useState<{ connectionId: string; connectionName: string; database: string } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [showCommandPalette, setShowCommandPalette] = useState(false)
+  const [recentCommands, setRecentCommands] = useState<string[]>([])
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const isNarrow = width < 100
   const showDetail = detailState !== null
@@ -42,6 +46,88 @@ export function App() {
   const showToast = useCallback((message: string) => {
     setToast(message)
   }, [])
+
+  const runCommand = useCallback((id: string, run: () => void) => {
+    run()
+    setRecentCommands((prev) => [id, ...prev.filter((cmdId) => cmdId !== id)].slice(0, 8))
+  }, [])
+
+  const commandItems = useMemo<CommandItem[]>(() => {
+    const base: CommandItem[] = [
+      {
+        id: "new-connection",
+        title: "Add new connection",
+        shortcut: "a",
+        run: () => runCommand("new-connection", () => setShowConnectionForm(true)),
+      },
+      {
+        id: "toggle-console",
+        title: showQueryLog ? "Hide console" : "Show console",
+        shortcut: "`",
+        run: () => runCommand("toggle-console", () => setShowQueryLog((v) => !v)),
+      },
+      {
+        id: "focus-sidebar",
+        title: "Focus sidebar",
+        shortcut: "1",
+        run: () => runCommand("focus-sidebar", () => setFocusZone("sidebar")),
+      },
+      {
+        id: "focus-main",
+        title: "Focus main panel",
+        shortcut: "2",
+        run: () => runCommand("focus-main", () => setFocusZone("main")),
+      },
+      {
+        id: "toggle-sidebar",
+        title: sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar",
+        shortcut: "Ctrl+B",
+        run: () => runCommand("toggle-sidebar", () => setSidebarCollapsed((prev) => !prev)),
+      },
+      {
+        id: "focus-detail",
+        title: "Focus detail panel",
+        shortcut: "3",
+        run: () => {
+          if (showDetail) runCommand("focus-detail", () => setFocusZone("detail"))
+        },
+      },
+      {
+        id: "focus-console",
+        title: "Focus console",
+        shortcut: "4",
+        run: () => {
+          if (showQueryLog) runCommand("focus-console", () => setFocusZone("querylog"))
+        },
+      },
+      {
+        id: "close-detail",
+        title: "Close detail panel",
+        shortcut: "Esc",
+        run: () => {
+          if (detailState) {
+            runCommand("close-detail", () => {
+              setDetailState(null)
+              setFocusZone("main")
+            })
+          }
+        },
+      },
+      {
+        id: "quit",
+        title: "Quit application",
+        shortcut: "Ctrl+Q",
+        run: () => runCommand("quit", () => renderer.destroy()),
+      },
+    ]
+
+    const rank = new Map(recentCommands.map((id, idx) => [id, idx]))
+    return [...base].sort((a, b) => {
+      const ra = rank.has(a.id) ? rank.get(a.id)! : 999
+      const rb = rank.has(b.id) ? rank.get(b.id)! : 999
+      return ra - rb
+    })
+  }, [runCommand, showQueryLog, showDetail, detailState, renderer, recentCommands, sidebarCollapsed])
 
   // Auto-copy selected text to clipboard when mouse selection finishes
   useEffect(() => {
@@ -68,6 +154,18 @@ export function App() {
       renderer.destroy()
       return
     }
+
+    if (key.ctrl && key.name === "p") {
+      setShowCommandPalette((v) => !v)
+      return
+    }
+
+    if (key.ctrl && key.name === "b") {
+      setSidebarCollapsed((prev) => !prev)
+      return
+    }
+
+    if (showCommandPalette) return
 
     // Block all other keys when modal is open
     if (showConnectionForm || databasePickerConnectionId || searchDialogDb) return
@@ -97,12 +195,12 @@ export function App() {
     if (key.name === "4" && showQueryLog) setFocusZone("querylog")
   })
 
-  const sidebarWidth = isNarrow ? 24 : 30
+  const sidebarWidth = sidebarCollapsed ? 0 : isNarrow ? 24 : 30
   const detailWidth = showDetail ? (isNarrow ? 20 : 28) : 0
   const queryLogHeight = showQueryLog ? 8 : 0
   const statusBarHeight = 1
   const bottomMarginHeight = 1
-  const hasModalOpen = showConnectionForm || !!databasePickerConnectionId || !!searchDialogDb
+  const hasModalOpen = showConnectionForm || !!databasePickerConnectionId || !!searchDialogDb || showCommandPalette
   const topAreaHeight = Math.max(6, height - queryLogHeight - statusBarHeight - bottomMarginHeight)
 
   // Center the connection form modal
@@ -115,19 +213,23 @@ export function App() {
     <box flexDirection="column" width="100%" height="100%">
       {/* Top area: sidebar + main + detail */}
       <box flexDirection="row" height={topAreaHeight}>
-        <Sidebar
-          width={sidebarWidth}
-          height={topAreaHeight}
-          focused={focusZone === "sidebar" && !hasModalOpen}
-          showConnectionForm={showConnectionForm}
-          showDatabasePicker={!!databasePickerConnectionId}
-          showSearchDialog={!!searchDialogDb}
-          searchDialogDb={searchDialogDb}
-          onShowConnectionForm={() => setShowConnectionForm(true)}
-          onShowDatabasePicker={(connectionId) => setDatabasePickerConnectionId(connectionId)}
-          onShowSearchDialog={(connectionId, connectionName, database) => setSearchDialogDb({ connectionId, connectionName, database })}
-          onFocusMain={() => setFocusZone("main")}
-        />
+        {!sidebarCollapsed && (
+          <Sidebar
+            width={sidebarWidth}
+            height={topAreaHeight}
+            focused={focusZone === "sidebar" && !hasModalOpen}
+            showConnectionForm={showConnectionForm}
+            showDatabasePicker={!!databasePickerConnectionId}
+            showSearchDialog={!!searchDialogDb}
+            searchDialogDb={searchDialogDb}
+            onShowConnectionForm={() => setShowConnectionForm(true)}
+            onShowDatabasePicker={(connectionId) => setDatabasePickerConnectionId(connectionId)}
+            onShowSearchDialog={(connectionId, connectionName, database) =>
+              setSearchDialogDb({ connectionId, connectionName, database })
+            }
+            onFocusMain={() => setFocusZone("main")}
+          />
+        )}
 
         <MainPanel
           focused={focusZone === "main"}
@@ -266,6 +368,14 @@ export function App() {
           </>
         )
       })()}
+
+      <CommandPalette
+        visible={showCommandPalette}
+        width={width}
+        height={height}
+        commands={commandItems}
+        onClose={() => setShowCommandPalette(false)}
+      />
     </box>
   )
 }

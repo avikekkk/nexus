@@ -183,16 +183,20 @@ export function MainPanel({ focused, sidebarWidth, onOpenDetail }: MainPanelProp
       {/* Content area */}
       {activeTab ? (
         activeData?.loading ? (
-          <box flexGrow={1} justifyContent="center" alignItems="center">
+          <box flexGrow={1} flexDirection="column" justifyContent="center" alignItems="center">
             <text fg="#e0af68">
               Loading {activeTab.database}.{activeTab.collection}...
             </text>
+            <text fg="#565f89">Please wait while query executes</text>
           </box>
         ) : activeData?.error ? (
           <box flexGrow={1} flexDirection="column" justifyContent="center" alignItems="center">
             <text fg="#f7768e">Error: {activeData.error}</text>
             <text fg="#565f89">
               Press <span fg="#7aa2f7">r</span> to retry
+            </text>
+            <text fg="#565f89">
+              Press <span fg="#7aa2f7">f</span> to refine query
             </text>
           </box>
         ) : activeData?.result ? (

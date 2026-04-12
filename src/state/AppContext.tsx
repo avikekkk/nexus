@@ -45,6 +45,7 @@ interface AppState {
 }
 
 const MAX_VISIBLE_DATABASES = 10
+const MAX_ROWS_PER_TAB_CACHE = 500
 
 type AppAction =
   | { type: "SET_CONNECTIONS"; configs: ConnectionConfig[] }
@@ -260,7 +261,17 @@ function reducer(state: AppState, action: AppAction): AppState {
         sort: null,
         customQuery: false,
       }
-      tabData.set(action.tabId, { ...existing, ...action.data })
+      let nextData = { ...existing, ...action.data }
+      if (nextData.result && nextData.result.rows.length > MAX_ROWS_PER_TAB_CACHE) {
+        nextData = {
+          ...nextData,
+          result: {
+            ...nextData.result,
+            rows: nextData.result.rows.slice(0, MAX_ROWS_PER_TAB_CACHE),
+          },
+        }
+      }
+      tabData.set(action.tabId, nextData)
       return { ...state, tabData }
     }
     case "SET_ALL_DATABASES": {

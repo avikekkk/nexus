@@ -19,7 +19,9 @@ function getShortcuts(focusZone: FocusZone, showQueryLog: boolean): Shortcut[] {
   const base: Shortcut[] = [
     { key: "Tab", desc: "Switch Panel" },
     { key: "Ctrl+P", desc: "Commands" },
+    { key: "Ctrl+B", desc: "Toggle Sidebar" },
     { key: "`", desc: showQueryLog ? "Hide Console" : "Show Console" },
+    { key: "1-4", desc: "Jump Panel" },
     { key: "Ctrl+Q", desc: "Quit" },
   ]
 
