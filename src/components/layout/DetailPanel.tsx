@@ -36,10 +36,13 @@ export function DetailPanel({
   const [isApplying, setIsApplying] = useState(false)
   const [viewportTop, setViewportTop] = useState(0)
   const [confirmClose, setConfirmClose] = useState(false)
+  const [measuredViewportRows, setMeasuredViewportRows] = useState<number | null>(null)
   const scrollRef = useRef<ScrollBoxRenderable | null>(null)
   const preferredColumnRef = useRef<number | null>(null)
   const innerWidth = Math.max(12, width - 4)
   const visibleContentRows = Math.max(3, height - 11)
+  const effectiveVisibleRows = measuredViewportRows ?? visibleContentRows
+  const effectiveContentCols = Math.max(1, innerWidth - 1)
 
   useEffect(() => {
     const text = stringifyValue(originalValue)
@@ -85,20 +88,45 @@ export function DetailPanel({
     return `${text.slice(0, Math.max(0, max - 1))}…`
   }, [innerWidth])
 
-  const totalLines = Math.max(1, contentLines.length)
-  const maxViewportTop = Math.max(0, totalLines - visibleContentRows)
+  const cursorLineStart = lineStarts[currentLineIndex] ?? 0
+  const cursorColumn = cursorPos - cursorLineStart
+
+  const visualMetrics = useMemo(() => {
+    const lineStartRows: number[] = []
+    let totalVisualLines = 0
+
+    for (const line of contentLines) {
+      lineStartRows.push(totalVisualLines)
+      const lineVisualRows = Math.max(1, Math.ceil(line.length / effectiveContentCols))
+      totalVisualLines += lineVisualRows
+    }
+
+    return {
+      lineStartRows,
+      totalVisualLines: Math.max(1, totalVisualLines),
+    }
+  }, [contentLines, effectiveContentCols])
+
+  const currentVisualLine = useMemo(() => {
+    const lineBase = visualMetrics.lineStartRows[currentLineIndex] ?? 0
+    const wrappedOffset = Math.floor(Math.max(0, cursorColumn) / effectiveContentCols)
+    return lineBase + wrappedOffset
+  }, [visualMetrics, currentLineIndex, cursorColumn, effectiveContentCols])
+
+  const maxViewportTop = Math.max(0, visualMetrics.totalVisualLines - effectiveVisibleRows)
 
   useEffect(() => {
     setViewportTop((prev) => {
-      if (currentLineIndex < prev) {
-        return currentLineIndex
+      const followBottomMargin = 1
+      if (currentVisualLine < prev) {
+        return currentVisualLine
       }
-      if (currentLineIndex >= prev + visibleContentRows) {
-        return Math.max(0, currentLineIndex - visibleContentRows + 1)
+      if (currentVisualLine >= prev + effectiveVisibleRows - followBottomMargin) {
+        return Math.max(0, currentVisualLine - effectiveVisibleRows + 1 + followBottomMargin)
       }
       return prev
     })
-  }, [currentLineIndex, visibleContentRows])
+  }, [currentVisualLine, effectiveVisibleRows])
 
   useEffect(() => {
     setViewportTop((prev) => Math.min(prev, maxViewportTop))
@@ -107,9 +135,11 @@ export function DetailPanel({
   useEffect(() => {
     const scrollbox = scrollRef.current
     if (!scrollbox) return
-    scrollbox.scrollTo({ x: 0, y: viewportTop })
-  }, [viewportTop])
 
+    const measuredRows = Math.max(1, scrollbox.viewport.height)
+    setMeasuredViewportRows((prev) => (prev === measuredRows ? prev : measuredRows))
+    scrollbox.scrollTo({ x: 0, y: viewportTop })
+  }, [viewportTop, height, width, value])
 
   const closeOrConfirm = useCallback(() => {
     if (dirty && !confirmClose) {
@@ -206,12 +236,12 @@ export function DetailPanel({
     }
 
     if (key.name === "pageup") {
-      scrollBy(-visibleContentRows)
+      scrollBy(-effectiveVisibleRows)
       return
     }
 
     if (key.name === "pagedown") {
-      scrollBy(visibleContentRows)
+      scrollBy(effectiveVisibleRows)
       return
     }
 
@@ -308,8 +338,6 @@ export function DetailPanel({
       return "[unserializable row]"
     }
   }, [rowData])
-  const cursorLineStart = lineStarts[currentLineIndex] ?? 0
-  const cursorColumn = cursorPos - cursorLineStart
 
   return (
     <box
@@ -391,7 +419,7 @@ export function DetailPanel({
           <text fg="#e0af68">Applying...</text>
         ) : (
           <text fg="#414868">
-            {clipLine(`Lines ${viewportTop + 1}-${Math.min(totalLines, viewportTop + visibleContentRows)} of ${totalLines}`)}
+            {clipLine(`Lines ${viewportTop + 1}-${Math.min(visualMetrics.totalVisualLines, viewportTop + effectiveVisibleRows)} of ${visualMetrics.totalVisualLines}`)}
           </text>
         )}
       </box>
