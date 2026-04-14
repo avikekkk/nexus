@@ -20,6 +20,7 @@ interface CommandPaletteProps {
 
 export function CommandPalette({ visible, width, height, commands, onClose }: CommandPaletteProps) {
   const [query, setQuery] = useState("")
+  const [cursorPos, setCursorPos] = useState(0)
   const [selected, setSelected] = useState(0)
 
   const filtered = useMemo(() => {
@@ -36,11 +37,11 @@ export function CommandPalette({ visible, width, height, commands, onClose }: Co
       onClose()
       return
     }
-    if (key.name === "down" || key.name === "j") {
+    if (key.name === "down") {
       setSelected((prev) => Math.min(filtered.length - 1, prev + 1))
       return
     }
-    if (key.name === "up" || key.name === "k") {
+    if (key.name === "up") {
       setSelected((prev) => Math.max(0, prev - 1))
       return
     }
@@ -52,20 +53,56 @@ export function CommandPalette({ visible, width, height, commands, onClose }: Co
       }
       return
     }
+
     if (isDeleteWordKey(key)) {
-      setQuery((prev) => deleteWordBackward(prev, prev.length).value)
+      const result = deleteWordBackward(query, cursorPos)
+      setQuery(result.value)
+      setCursorPos(result.cursor)
       setSelected(0)
       return
     }
+
+    if (key.name === "left") {
+      setCursorPos((prev) => Math.max(0, prev - 1))
+      return
+    }
+
+    if (key.name === "right") {
+      setCursorPos((prev) => Math.min(query.length, prev + 1))
+      return
+    }
+
+    if (key.name === "home") {
+      setCursorPos(0)
+      return
+    }
+
+    if (key.name === "end") {
+      setCursorPos(query.length)
+      return
+    }
+
     if (key.name === "backspace") {
-      setQuery((prev) => prev.slice(0, -1))
+      if (cursorPos <= 0) return
+      setQuery((prev) => prev.slice(0, cursorPos - 1) + prev.slice(cursorPos))
+      setCursorPos((prev) => prev - 1)
       setSelected(0)
       return
     }
+
+    if (key.name === "delete") {
+      if (cursorPos >= query.length) return
+      setQuery((prev) => prev.slice(0, cursorPos) + prev.slice(cursorPos + 1))
+      setSelected(0)
+      return
+    }
+
     const printable = getPrintableKey(key)
     if (printable) {
-      setQuery((prev) => prev + printable)
+      setQuery((prev) => prev.slice(0, cursorPos) + printable + prev.slice(cursorPos))
+      setCursorPos((prev) => prev + printable.length)
       setSelected(0)
+      return
     }
   })
 
@@ -94,9 +131,24 @@ export function CommandPalette({ visible, width, height, commands, onClose }: Co
         flexDirection="column"
       >
         <box height={1} paddingX={1}>
-          <text fg="#565f89">Query: </text>
-          <text fg="#c0caf5">{query || ""}</text>
-          {!query && <text fg="#7aa2f7">█</text>}
+          {query ? (
+            <text fg="#c0caf5">
+              {query.slice(0, cursorPos)}
+              {cursorPos < query.length ? (
+                <span fg="#1a1b26" bg="#7aa2f7">
+                  {query[cursorPos]}
+                </span>
+              ) : (
+                <span fg="#7aa2f7">█</span>
+              )}
+              {query.slice(cursorPos + (cursorPos < query.length ? 1 : 0))}
+            </text>
+          ) : (
+            <text fg="#565f89">
+              <span fg="#1a1b26" bg="#7aa2f7">S</span>
+              earch Commands
+            </text>
+          )}
         </box>
         <box height={1} paddingX={1}>
           <text fg="#414868">{"─".repeat(200)}</text>

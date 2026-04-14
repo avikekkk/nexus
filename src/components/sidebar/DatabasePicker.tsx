@@ -6,7 +6,7 @@ import type { DbType, CollectionInfo } from "../../db/types.ts"
 import { DEFAULT_PORTS } from "../../db/types.ts"
 import { parseConnectionUrl } from "../../db/url.ts"
 import { getRedisTypeIcon } from "../../utils/redisIcons.ts"
-import { getPrintableKey, isDeleteWordKey, isSubmitKey } from "../../utils/keyInput.ts"
+import { isSubmitKey } from "../../utils/keyInput.ts"
 
 interface DatabasePickerProps {
   connectionId: string
@@ -283,7 +283,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       return
     }
 
-    // In search mode - handle typing manually
+    // In search mode - input handles typing/editing
     if (searchMode) {
       // Exit search mode on Enter
       if (isSubmitKey(key)) {
@@ -291,50 +291,6 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
         setSearchMode(false)
         return
       }
-
-      // Delete word: ctrl+backspace or ctrl+w
-      if (isDeleteWordKey(key)) {
-        setSearchQuery((q) => {
-          const trimmed = q.trimEnd()
-          const lastSep = Math.max(trimmed.lastIndexOf(" "), trimmed.lastIndexOf(":"), trimmed.lastIndexOf("/"))
-          const newQuery = lastSep >= 0 ? q.slice(0, lastSep + 1) : ""
-          debug(`[DatabasePicker] delete-word: "${q}" -> "${newQuery}"`)
-          return newQuery
-        })
-        return
-      }
-
-      // Handle backspace
-      if (key.name === "backspace") {
-        setSearchQuery((q) => {
-          const newQuery = q.slice(0, -1)
-          debug(`[DatabasePicker] backspace: "${q}" -> "${newQuery}"`)
-          return newQuery
-        })
-        return
-      }
-
-      // Ignore other ctrl/meta combos
-      if (key.ctrl || key.meta) return
-
-      // Handle space
-      if (key.name === "space") {
-        setSearchQuery((q) => q + " ")
-        return
-      }
-
-      // Handle regular character input (single printable character)
-      const printable = getPrintableKey(key)
-      if (printable) {
-        setSearchQuery((q) => {
-          const newQuery = q + printable
-          debug(`[DatabasePicker] typing: "${q}" -> "${newQuery}"`)
-          return newQuery
-        })
-        return
-      }
-
-      debug(`[DatabasePicker] in search mode, unhandled key: ${key.name}`)
       return
     }
 
@@ -472,7 +428,10 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
             <text fg="#565f89">Search:</text>
             <input
               value={searchQuery}
-              onChange={() => {}}
+              onChange={(value) => {
+                setSearchQuery(value)
+                setCursorIndex(0)
+              }}
               placeholder="Type to filter..."
               focused={true}
               width={30}
