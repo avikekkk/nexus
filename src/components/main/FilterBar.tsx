@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react"
 import { useKeyboard } from "@opentui/react"
 import type { DbType } from "../../db/types.ts"
 import { parseMongoFilter, parseMySQLQuery, validateRedisPattern } from "../../utils/queryParser.ts"
+import { deleteWordBackward, getPrintableKey, isDeleteWordKey, isSubmitKey } from "../../utils/keyInput.ts"
 
 interface FilterBarProps {
   focused: boolean
@@ -25,31 +26,6 @@ const AUTO_PAIR_MAP: Record<string, string> = {
 interface InputEditResult {
   value: string
   cursor: number
-}
-
-function getInputAfterDeleteWord(input: string, cursor: number): InputEditResult {
-  if (!input || cursor <= 0) {
-    return { value: input, cursor }
-  }
-
-  let start = cursor
-
-  while (start > 0 && /\s/.test(input[start - 1] ?? "")) {
-    start -= 1
-  }
-
-  while (start > 0 && /[a-zA-Z0-9_]/.test(input[start - 1] ?? "")) {
-    start -= 1
-  }
-
-  if (start === cursor && start > 0) {
-    start -= 1
-  }
-
-  return {
-    value: input.slice(0, start) + input.slice(cursor),
-    cursor: start,
-  }
 }
 
 function getInputAfterBackspace(input: string, cursor: number): InputEditResult {
@@ -241,7 +217,7 @@ export function FilterBar({
     if (!focused) return
 
     // Enter: execute query
-    if (key.name === "return") {
+    if (isSubmitKey(key)) {
       handleExecute()
       return
     }
@@ -259,8 +235,8 @@ export function FilterBar({
     }
 
     // Delete word: ctrl+backspace or ctrl+w
-    if ((key.name === "backspace" && key.ctrl) || (key.name === "w" && key.ctrl)) {
-      const result = getInputAfterDeleteWord(filterInput, cursorPos)
+    if (isDeleteWordKey(key)) {
+      const result = deleteWordBackward(filterInput, cursorPos)
       setFilterInput(result.value)
       setCursorPos(result.cursor)
       return
@@ -295,8 +271,10 @@ export function FilterBar({
       const result = getInputAfterDelete(filterInput, cursorPos)
       setFilterInput(result.value)
       setCursorPos(result.cursor)
-    } else if (key.sequence && key.sequence.length === 1 && !key.ctrl) {
-      const result = getCompletedInput(filterInput, cursorPos, key.sequence)
+    } else {
+      const printable = getPrintableKey(key)
+      if (!printable) return
+      const result = getCompletedInput(filterInput, cursorPos, printable)
       setFilterInput(result.value)
       setCursorPos(result.cursor)
     }

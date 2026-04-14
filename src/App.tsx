@@ -196,7 +196,8 @@ export function App() {
   })
 
   const sidebarWidth = sidebarCollapsed ? 0 : isNarrow ? 24 : 30
-  const detailWidth = showDetail ? (isNarrow ? 20 : 28) : 0
+  const detailBaseWidth = isNarrow ? 22 : 31
+  const detailWidth = showDetail ? Math.ceil(detailBaseWidth * 1.1) : 0
   const queryLogHeight = showQueryLog ? 8 : 0
   const statusBarHeight = 1
   const bottomMarginHeight = 1
@@ -232,8 +233,9 @@ export function App() {
         )}
 
         <MainPanel
-          focused={focusZone === "main"}
+          focused={focusZone === "main" && !hasModalOpen}
           sidebarWidth={sidebarWidth}
+          detailWidth={detailWidth}
           onOpenDetail={(tabId, cell) => {
             const tab = state.tabs.find((t) => t.id === tabId)
             const conn = tab ? state.connections.find((c) => c.config.id === tab.connectionId) : undefined
@@ -246,7 +248,8 @@ export function App() {
         {showDetail && detailState && (
           <DetailPanel
             width={detailWidth}
-            focused={focusZone === "detail"}
+            height={topAreaHeight}
+            focused={focusZone === "detail" && !hasModalOpen}
             dbType={detailState.dbType}
             tabLabel={detailState.tabLabel}
             fieldName={detailState.cell.columnName}
@@ -265,7 +268,7 @@ export function App() {
       </box>
 
       {/* Console */}
-      {showQueryLog && <Console height={queryLogHeight} focused={focusZone === "querylog"} />}
+      {showQueryLog && <Console height={queryLogHeight} focused={focusZone === "querylog" && !hasModalOpen} />}
 
       {/* Status bar */}
       <StatusBar focusZone={focusZone} showQueryLog={showQueryLog} showDetail={showDetail} width={width} />

@@ -21,6 +21,7 @@ interface DataTableProps {
   onColumnSort?: (column: string, direction: 1 | -1) => void
   currentSort?: Record<string, 1 | -1> | null
   sidebarWidth?: number
+  detailWidth?: number
   filterBarActive?: boolean
 }
 
@@ -121,6 +122,7 @@ export function DataTable({
   onColumnSort,
   currentSort,
   sidebarWidth = 0,
+  detailWidth = 0,
   filterBarActive = false,
 }: DataTableProps) {
   const { width: termWidth, height: termHeight } = useTerminalDimensions()
@@ -141,7 +143,7 @@ export function DataTable({
 
   // Available width for the table (subtract sidebar, main panel border, internal padding)
   // sidebarWidth includes its own border; main panel has 2 chars for border (rounded)
-  const availableWidth = Math.max(20, termWidth - sidebarWidth - 4)
+  const availableWidth = Math.max(20, termWidth - sidebarWidth - detailWidth - 4)
 
   const columnWidths = useMemo(
     () => computeColumnWidths(columns, rows, availableWidth),

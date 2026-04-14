@@ -8,10 +8,11 @@ import { DB_TYPE_ICONS, DB_TYPE_COLORS } from "../../constants/dbIcons.ts"
 interface MainPanelProps {
   focused: boolean
   sidebarWidth: number
+  detailWidth: number
   onOpenDetail: (tabId: string, cell: SelectedCell) => void
 }
 
-export function MainPanel({ focused, sidebarWidth, onOpenDetail }: MainPanelProps) {
+export function MainPanel({ focused, sidebarWidth, detailWidth, onOpenDetail }: MainPanelProps) {
   const { state, closeTab, nextTab, prevTab, fetchTabData, setTabFilter, setTabSort } = useApp()
   const borderColor = focused ? "#7aa2f7" : "#414868"
   const { tabs, activeTabId, tabData, connections } = state
@@ -223,6 +224,7 @@ export function MainPanel({ focused, sidebarWidth, onOpenDetail }: MainPanelProp
               onColumnSort={handleColumnSort}
               onCellSelect={handleCellSelect}
               sidebarWidth={sidebarWidth}
+              detailWidth={detailWidth}
               filterBarActive={filterBarFocused}
             />
           </box>

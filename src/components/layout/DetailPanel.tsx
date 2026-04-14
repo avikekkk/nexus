@@ -1,11 +1,13 @@
-import { useState, useEffect, useMemo, useCallback } from "react"
-import { useKeyboard, useTerminalDimensions } from "@opentui/react"
-import type { MouseEvent as TuiMouseEvent } from "@opentui/core"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import { useKeyboard } from "@opentui/react"
+import type { MouseEvent as TuiMouseEvent, ScrollBoxRenderable } from "@opentui/core"
 import type { DbType } from "../../db/types.ts"
 import { formatBytes, stringifyValue, parseEditedValue, getTypeName } from "../../utils/detailValue.ts"
+import { deleteWordBackward, getPrintableKey, isDeleteWordKey, isShiftEnterKey } from "../../utils/keyInput.ts"
 
 interface DetailPanelProps {
   width: number
+  height: number
   focused: boolean
   dbType: DbType
   tabLabel: string
@@ -17,6 +19,7 @@ interface DetailPanelProps {
 }
 export function DetailPanel({
   width,
+  height,
   focused,
   tabLabel,
   fieldName,
@@ -33,16 +36,22 @@ export function DetailPanel({
   const [isApplying, setIsApplying] = useState(false)
   const [viewportTop, setViewportTop] = useState(0)
   const [confirmClose, setConfirmClose] = useState(false)
-  const { height: termHeight } = useTerminalDimensions()
+  const [pendingJumpToBottom, setPendingJumpToBottom] = useState(false)
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null)
+  const preferredColumnRef = useRef<number | null>(null)
+  const innerWidth = Math.max(12, width - 4)
+  const visibleContentRows = Math.max(3, height - 11)
 
   useEffect(() => {
     const text = stringifyValue(originalValue)
     setValue(text)
-    setCursorPos(text.length)
+    setCursorPos(0)
     setError(null)
     setIsApplying(false)
     setViewportTop(0)
     setConfirmClose(false)
+    setPendingJumpToBottom(false)
+    preferredColumnRef.current = 0
   }, [originalValue, fieldName])
 
   const dirty = value !== stringifyValue(originalValue)
@@ -62,7 +71,6 @@ export function DetailPanel({
   }, [value])
 
   const contentLines = useMemo(() => value.split("\n"), [value])
-  const totalLines = contentLines.length
 
   const currentLineIndex = useMemo(() => {
     let idx = 0
@@ -73,20 +81,76 @@ export function DetailPanel({
     return idx
   }, [lineStarts, cursorPos])
 
-  const visibleContentRows = Math.max(3, termHeight - 14)
-  const maxViewportTop = Math.max(0, totalLines - visibleContentRows)
+  const clipLine = useCallback((text: string, max = innerWidth) => {
+    if (max <= 1) return ""
+    if (text.length <= max) return text
+    return `${text.slice(0, Math.max(0, max - 1))}…`
+  }, [innerWidth])
+
+  const wrappedLines = useMemo(() => {
+    return contentLines.flatMap((line, lineIndex) => {
+      if (line.length === 0) {
+        return [{ lineIndex, start: 0, text: "", isLastSegment: true }]
+      }
+
+      const segments: Array<{ lineIndex: number; start: number; text: string; isLastSegment: boolean }> = []
+      for (let start = 0; start < line.length; start += innerWidth) {
+        const text = line.slice(start, start + innerWidth)
+        segments.push({
+          lineIndex,
+          start,
+          text,
+          isLastSegment: start + innerWidth >= line.length,
+        })
+      }
+      return segments
+    })
+  }, [contentLines, innerWidth])
+
+  const totalWrappedLines = wrappedLines.length
+  const maxViewportTop = Math.max(0, totalWrappedLines - visibleContentRows)
 
   useEffect(() => {
-    if (currentLineIndex < viewportTop) {
-      setViewportTop(currentLineIndex)
-    } else if (currentLineIndex >= viewportTop + visibleContentRows) {
-      setViewportTop(Math.max(0, currentLineIndex - visibleContentRows + 1))
-    }
-  }, [currentLineIndex, viewportTop, visibleContentRows])
+    const cursorLineStart = lineStarts[currentLineIndex] ?? 0
+    const cursorColumn = cursorPos - cursorLineStart
+    const cursorWrappedIndex = wrappedLines.findIndex((line) => {
+      if (line.lineIndex !== currentLineIndex) return false
+      const end = line.start + line.text.length
+      return cursorColumn >= line.start && (cursorColumn < end || (line.isLastSegment && cursorColumn === end))
+    })
+    if (cursorWrappedIndex === -1) return
+
+    setViewportTop((prev) => {
+      if (cursorWrappedIndex < prev) {
+        return cursorWrappedIndex
+      }
+      if (cursorWrappedIndex >= prev + visibleContentRows) {
+        return Math.max(0, cursorWrappedIndex - visibleContentRows + 1)
+      }
+      return prev
+    })
+  }, [currentLineIndex, cursorPos, lineStarts, visibleContentRows, wrappedLines])
 
   useEffect(() => {
     setViewportTop((prev) => Math.min(prev, maxViewportTop))
   }, [maxViewportTop])
+
+  useEffect(() => {
+    const scrollbox = scrollRef.current
+    if (!scrollbox) return
+    scrollbox.scrollTo({ x: 0, y: viewportTop })
+  }, [viewportTop])
+
+  useEffect(() => {
+    if (!pendingJumpToBottom) return
+    const scrollbox = scrollRef.current
+    if (!scrollbox) return
+
+    const bottom = Math.max(0, scrollbox.scrollHeight - scrollbox.viewport.height)
+    scrollbox.scrollTo({ x: 0, y: bottom })
+    setViewportTop(bottom)
+    setPendingJumpToBottom(false)
+  }, [pendingJumpToBottom, wrappedLines, visibleContentRows, value])
 
   const closeOrConfirm = useCallback(() => {
     if (dirty && !confirmClose) {
@@ -105,6 +169,25 @@ export function DetailPanel({
     [maxViewportTop]
   )
 
+  const moveCursorVertical = useCallback(
+    (direction: -1 | 1) => {
+      const targetLineIndex = currentLineIndex + direction
+      if (targetLineIndex < 0 || targetLineIndex >= contentLines.length) return
+
+      const currentLineStart = lineStarts[currentLineIndex] ?? 0
+      const targetLineStart = lineStarts[targetLineIndex] ?? 0
+      const targetLineLength = contentLines[targetLineIndex]?.length ?? 0
+      const currentColumn = cursorPos - currentLineStart
+      const preferredColumn = preferredColumnRef.current ?? currentColumn
+      const nextColumn = Math.min(preferredColumn, targetLineLength)
+
+      preferredColumnRef.current = preferredColumn
+      setCursorPos(targetLineStart + nextColumn)
+      setConfirmClose(false)
+    },
+    [contentLines, currentLineIndex, cursorPos, lineStarts]
+  )
+
   useKeyboard((key) => {
     if (!focused) return
 
@@ -114,35 +197,51 @@ export function DetailPanel({
     }
 
     if (key.name === "left") {
+      preferredColumnRef.current = null
       setCursorPos((prev) => Math.max(0, prev - 1))
       setConfirmClose(false)
       return
     }
 
     if (key.name === "right") {
+      preferredColumnRef.current = null
       setCursorPos((prev) => Math.min(value.length, prev + 1))
       setConfirmClose(false)
       return
     }
 
+    if (key.name === "up") {
+      moveCursorVertical(-1)
+      return
+    }
+
+    if (key.name === "down") {
+      moveCursorVertical(1)
+      return
+    }
+
     if (key.name === "home") {
+      preferredColumnRef.current = null
       setCursorPos(0)
+      setViewportTop(0)
       setConfirmClose(false)
       return
     }
 
     if (key.name === "end") {
+      preferredColumnRef.current = null
       setCursorPos(value.length)
+      setPendingJumpToBottom(true)
       setConfirmClose(false)
       return
     }
 
-    if (key.name === "up" || (key.ctrl && key.name === "u")) {
+    if (key.ctrl && key.name === "u") {
       scrollBy(-1)
       return
     }
 
-    if (key.name === "down" || (key.ctrl && key.name === "d")) {
+    if (key.ctrl && key.name === "d") {
       scrollBy(1)
       return
     }
@@ -158,6 +257,7 @@ export function DetailPanel({
     }
 
     if (key.ctrl && key.name === "l") {
+      preferredColumnRef.current = null
       setValue("")
       setCursorPos(0)
       setError(null)
@@ -185,17 +285,28 @@ export function DetailPanel({
       return
     }
 
-    if (key.name === "return" && key.shift) {
+    if (isShiftEnterKey(key)) {
       const before = value.slice(0, cursorPos)
       const after = value.slice(cursorPos)
+      preferredColumnRef.current = null
       setValue(before + "\n" + after)
       setCursorPos(cursorPos + 1)
       setConfirmClose(false)
       return
     }
 
+    if (isDeleteWordKey(key)) {
+      const result = deleteWordBackward(value, cursorPos)
+      preferredColumnRef.current = null
+      setValue(result.value)
+      setCursorPos(result.cursor)
+      setConfirmClose(false)
+      return
+    }
+
     if (key.name === "backspace") {
       if (cursorPos === 0) return
+      preferredColumnRef.current = null
       setValue((prev) => prev.slice(0, cursorPos - 1) + prev.slice(cursorPos))
       setCursorPos((prev) => Math.max(0, prev - 1))
       setConfirmClose(false)
@@ -204,15 +315,18 @@ export function DetailPanel({
 
     if (key.name === "delete") {
       if (cursorPos >= value.length) return
+      preferredColumnRef.current = null
       setValue((prev) => prev.slice(0, cursorPos) + prev.slice(cursorPos + 1))
       setConfirmClose(false)
       return
     }
 
-    if (key.sequence && key.sequence.length === 1 && !key.ctrl) {
+    const printable = getPrintableKey(key)
+    if (printable) {
       const before = value.slice(0, cursorPos)
       const after = value.slice(cursorPos)
-      setValue(before + key.sequence + after)
+      preferredColumnRef.current = null
+      setValue(before + printable + after)
       setCursorPos(cursorPos + 1)
       setConfirmClose(false)
     }
@@ -220,7 +334,7 @@ export function DetailPanel({
 
   const handleMouseScroll = useCallback(
     (event: TuiMouseEvent) => {
-      if (!focused || !event.scroll) return
+      if (!event.scroll) return
       const delta = Math.max(1, event.scroll.delta)
       if (event.scroll.direction === "up") scrollBy(-delta)
       if (event.scroll.direction === "down") scrollBy(delta)
@@ -228,11 +342,20 @@ export function DetailPanel({
     [focused, scrollBy]
   )
 
-  const prettyRow = JSON.stringify(rowData, null, 2)
-  const visibleLines = contentLines.slice(viewportTop, viewportTop + visibleContentRows)
+  const rowPreview = useMemo(() => {
+    try {
+      return JSON.stringify(rowData)
+    } catch {
+      return "[unserializable row]"
+    }
+  }, [rowData])
+  const cursorLineStart = lineStarts[currentLineIndex] ?? 0
+  const cursorColumn = cursorPos - cursorLineStart
+
   return (
     <box
       width={width}
+      height={height}
       flexDirection="column"
       border
       borderStyle="rounded"
@@ -241,35 +364,51 @@ export function DetailPanel({
       titleAlignment="left"
     >
       <box height={4} flexDirection="column" paddingX={1}>
-        <text fg="#7aa2f7">{tabLabel}</text>
-        <text fg="#c0caf5">Field: {fieldName}</text>
-        <text fg="#565f89">Type: {metadata.type}  Size: {metadata.size}</text>
-        <text fg="#414868">Apply: Ctrl+A  Close: Esc/q</text>
+        <text fg="#7aa2f7">{clipLine(tabLabel)}</text>
+        <text fg="#c0caf5">{clipLine(`Field: ${fieldName}`)}</text>
+        <text fg="#565f89">{clipLine(`Type: ${metadata.type}  Size: ${metadata.size}`)}</text>
+        <text fg="#414868">{clipLine("Apply: Ctrl+A  Close: Esc/q")}</text>
       </box>
 
       <box height={1} paddingX={1}>
-        <text fg="#414868">{"─".repeat(200)}</text>
+        <text fg="#414868">{"─".repeat(innerWidth)}</text>
       </box>
 
-      <box flexGrow={1} flexDirection="column" paddingX={1} onMouseScroll={handleMouseScroll}>
-        {visibleLines.length > 0 ? (
-          visibleLines.map((line, localIdx) => {
-            const idx = viewportTop + localIdx
-            const isCursorLine = focused && idx === currentLineIndex
-            const lineStart = lineStarts[idx] ?? 0
-            const cursorInLine = cursorPos - lineStart
-            if (!isCursorLine || cursorInLine < 0 || cursorInLine > line.length) {
+      <scrollbox
+        ref={scrollRef}
+        flexGrow={1}
+        paddingX={1}
+        scrollY
+        scrollX={false}
+        onMouseScroll={handleMouseScroll}
+        verticalScrollbarOptions={{
+          showArrows: false,
+          trackOptions: {
+            backgroundColor: "#1a1b26",
+            foregroundColor: "#414868",
+          },
+        }}
+      >
+        {wrappedLines.length > 0 ? (
+          wrappedLines.map((line, index) => {
+            const isCursorLine = focused && line.lineIndex === currentLineIndex
+            const cursorInSegment = cursorColumn - line.start
+
+            if (!isCursorLine || cursorInSegment < 0 || cursorInSegment > line.text.length) {
               return (
-                <text key={`line-${idx}`} fg="#a9b1d6">
-                  {line}
+                <text key={`line-${index}`} fg="#a9b1d6">
+                  {line.text}
                 </text>
               )
             }
-            const before = line.slice(0, cursorInLine)
-            const ch = line[cursorInLine] ?? " "
-            const after = line.slice(cursorInLine + (cursorInLine < line.length ? 1 : 0))
+
+            const cursorAtEnd = cursorInSegment === line.text.length
+            const before = line.text.slice(0, cursorInSegment)
+            const ch = cursorAtEnd ? " " : line.text[cursorInSegment]
+            const after = cursorAtEnd ? "" : line.text.slice(cursorInSegment + 1)
+
             return (
-              <text key={`line-${idx}`} fg="#a9b1d6">
+              <text key={`line-${index}`} fg="#a9b1d6">
                 {before}
                 <span fg="#1a1b26" bg="#7aa2f7">
                   {ch}
@@ -281,19 +420,21 @@ export function DetailPanel({
         ) : (
           <text fg="#565f89">(empty)</text>
         )}
-      </box>
+      </scrollbox>
 
       <box height={1} paddingX={1}>
-        <text fg="#414868">{"─".repeat(200)}</text>
+        <text fg="#414868">{"─".repeat(innerWidth)}</text>
       </box>
 
       <box height={3} flexDirection="column" paddingX={1}>
-        {error ? <text fg="#f7768e">{error}</text> : <text fg="#565f89">Row preview: {prettyRow}</text>}
-        <text fg="#565f89">Ctrl+L clear  Shift+Enter newline  PgUp/PgDn scroll</text>
+        {error ? <text fg="#f7768e">{clipLine(error)}</text> : <text fg="#565f89">{clipLine(`Row preview: ${rowPreview}`)}</text>}
+        <text fg="#565f89">{clipLine("Ctrl+L clear  Shift+Enter newline  PgUp/PgDn scroll")}</text>
         {isApplying ? (
           <text fg="#e0af68">Applying...</text>
         ) : (
-          <text fg="#414868">Lines {viewportTop + 1}-{Math.min(totalLines, viewportTop + visibleContentRows)} of {totalLines}</text>
+          <text fg="#414868">
+            {clipLine(`Lines ${viewportTop + 1}-${Math.min(totalWrappedLines, viewportTop + visibleContentRows)} of ${totalWrappedLines}`)}
+          </text>
         )}
       </box>
     </box>

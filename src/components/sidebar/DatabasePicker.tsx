@@ -6,6 +6,7 @@ import type { DbType, CollectionInfo } from "../../db/types.ts"
 import { DEFAULT_PORTS } from "../../db/types.ts"
 import { parseConnectionUrl } from "../../db/url.ts"
 import { getRedisTypeIcon } from "../../utils/redisIcons.ts"
+import { getPrintableKey, isDeleteWordKey, isSubmitKey } from "../../utils/keyInput.ts"
 
 interface DatabasePickerProps {
   connectionId: string
@@ -285,14 +286,14 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
     // In search mode - handle typing manually
     if (searchMode) {
       // Exit search mode on Enter
-      if (key.name === "return") {
+      if (isSubmitKey(key)) {
         debug(`[DatabasePicker] enter in search mode - exiting search`)
         setSearchMode(false)
         return
       }
 
       // Delete word: ctrl+backspace or ctrl+w
-      if ((key.name === "backspace" && key.ctrl) || (key.name === "w" && key.ctrl)) {
+      if (isDeleteWordKey(key)) {
         setSearchQuery((q) => {
           const trimmed = q.trimEnd()
           const lastSep = Math.max(trimmed.lastIndexOf(" "), trimmed.lastIndexOf(":"), trimmed.lastIndexOf("/"))
@@ -323,9 +324,10 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       }
 
       // Handle regular character input (single printable character)
-      if (key.name && key.name.length === 1) {
+      const printable = getPrintableKey(key)
+      if (printable) {
         setSearchQuery((q) => {
-          const newQuery = q + key.name
+          const newQuery = q + printable
           debug(`[DatabasePicker] typing: "${q}" -> "${newQuery}"`)
           return newQuery
         })
@@ -367,7 +369,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
     }
 
     // In search mode: Enter opens the collection
-    if (isSearch && key.name === "return") {
+    if (isSearch && isSubmitKey(key)) {
       const item = displayItems[cursorIndex]
       if (item && database) {
         debug(`[DatabasePicker] opening collection: ${database}.${item}`)
@@ -378,7 +380,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
     }
 
     // In select mode: Space/Return toggles selection
-    if (!isSearch && (key.name === "space" || key.name === "return")) {
+    if (!isSearch && (key.name === "space" || isSubmitKey(key))) {
       const db = displayItems[cursorIndex]
       if (db) {
         setSelected((prev) => {

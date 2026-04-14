@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { useKeyboard } from "@opentui/react"
 import { fuzzyScore } from "../../utils/fuzzy.ts"
+import { deleteWordBackward, getPrintableKey, isDeleteWordKey, isSubmitKey } from "../../utils/keyInput.ts"
 
 export interface CommandItem {
   id: string
@@ -43,7 +44,7 @@ export function CommandPalette({ visible, width, height, commands, onClose }: Co
       setSelected((prev) => Math.max(0, prev - 1))
       return
     }
-    if (key.name === "return") {
+    if (isSubmitKey(key)) {
       const cmd = filtered[selected]
       if (cmd) {
         cmd.run()
@@ -51,13 +52,19 @@ export function CommandPalette({ visible, width, height, commands, onClose }: Co
       }
       return
     }
+    if (isDeleteWordKey(key)) {
+      setQuery((prev) => deleteWordBackward(prev, prev.length).value)
+      setSelected(0)
+      return
+    }
     if (key.name === "backspace") {
       setQuery((prev) => prev.slice(0, -1))
       setSelected(0)
       return
     }
-    if (key.sequence && key.sequence.length === 1 && !key.ctrl) {
-      setQuery((prev) => prev + key.sequence)
+    const printable = getPrintableKey(key)
+    if (printable) {
+      setQuery((prev) => prev + printable)
       setSelected(0)
     }
   })
