@@ -36,7 +36,6 @@ export function DetailPanel({
   const [isApplying, setIsApplying] = useState(false)
   const [viewportTop, setViewportTop] = useState(0)
   const [confirmClose, setConfirmClose] = useState(false)
-  const [pendingJumpToBottom, setPendingJumpToBottom] = useState(false)
   const scrollRef = useRef<ScrollBoxRenderable | null>(null)
   const preferredColumnRef = useRef<number | null>(null)
   const innerWidth = Math.max(12, width - 4)
@@ -50,7 +49,6 @@ export function DetailPanel({
     setIsApplying(false)
     setViewportTop(0)
     setConfirmClose(false)
-    setPendingJumpToBottom(false)
     preferredColumnRef.current = 0
   }, [originalValue, fieldName])
 
@@ -87,49 +85,20 @@ export function DetailPanel({
     return `${text.slice(0, Math.max(0, max - 1))}…`
   }, [innerWidth])
 
-  const wrappedLines = useMemo(() => {
-    return contentLines.flatMap((line, lineIndex) => {
-      if (line.length === 0) {
-        return [{ lineIndex, start: 0, text: "", isLastSegment: true }]
-      }
-
-      const segments: Array<{ lineIndex: number; start: number; text: string; isLastSegment: boolean }> = []
-      for (let start = 0; start < line.length; start += innerWidth) {
-        const text = line.slice(start, start + innerWidth)
-        segments.push({
-          lineIndex,
-          start,
-          text,
-          isLastSegment: start + innerWidth >= line.length,
-        })
-      }
-      return segments
-    })
-  }, [contentLines, innerWidth])
-
-  const totalWrappedLines = wrappedLines.length
-  const maxViewportTop = Math.max(0, totalWrappedLines - visibleContentRows)
+  const totalLines = Math.max(1, contentLines.length)
+  const maxViewportTop = Math.max(0, totalLines - visibleContentRows)
 
   useEffect(() => {
-    const cursorLineStart = lineStarts[currentLineIndex] ?? 0
-    const cursorColumn = cursorPos - cursorLineStart
-    const cursorWrappedIndex = wrappedLines.findIndex((line) => {
-      if (line.lineIndex !== currentLineIndex) return false
-      const end = line.start + line.text.length
-      return cursorColumn >= line.start && (cursorColumn < end || (line.isLastSegment && cursorColumn === end))
-    })
-    if (cursorWrappedIndex === -1) return
-
     setViewportTop((prev) => {
-      if (cursorWrappedIndex < prev) {
-        return cursorWrappedIndex
+      if (currentLineIndex < prev) {
+        return currentLineIndex
       }
-      if (cursorWrappedIndex >= prev + visibleContentRows) {
-        return Math.max(0, cursorWrappedIndex - visibleContentRows + 1)
+      if (currentLineIndex >= prev + visibleContentRows) {
+        return Math.max(0, currentLineIndex - visibleContentRows + 1)
       }
       return prev
     })
-  }, [currentLineIndex, cursorPos, lineStarts, visibleContentRows, wrappedLines])
+  }, [currentLineIndex, visibleContentRows])
 
   useEffect(() => {
     setViewportTop((prev) => Math.min(prev, maxViewportTop))
@@ -141,16 +110,6 @@ export function DetailPanel({
     scrollbox.scrollTo({ x: 0, y: viewportTop })
   }, [viewportTop])
 
-  useEffect(() => {
-    if (!pendingJumpToBottom) return
-    const scrollbox = scrollRef.current
-    if (!scrollbox) return
-
-    const bottom = Math.max(0, scrollbox.scrollHeight - scrollbox.viewport.height)
-    scrollbox.scrollTo({ x: 0, y: bottom })
-    setViewportTop(bottom)
-    setPendingJumpToBottom(false)
-  }, [pendingJumpToBottom, wrappedLines, visibleContentRows, value])
 
   const closeOrConfirm = useCallback(() => {
     if (dirty && !confirmClose) {
@@ -231,7 +190,7 @@ export function DetailPanel({
     if (key.name === "end") {
       preferredColumnRef.current = null
       setCursorPos(value.length)
-      setPendingJumpToBottom(true)
+      setViewportTop(maxViewportTop)
       setConfirmClose(false)
       return
     }
@@ -389,23 +348,24 @@ export function DetailPanel({
           },
         }}
       >
-        {wrappedLines.length > 0 ? (
-          wrappedLines.map((line, index) => {
-            const isCursorLine = focused && line.lineIndex === currentLineIndex
-            const cursorInSegment = cursorColumn - line.start
+        {value.length === 0 ? (
+          <text fg="#565f89">(empty)</text>
+        ) : (
+          contentLines.map((line, index) => {
+            const isCursorLine = focused && index === currentLineIndex
 
-            if (!isCursorLine || cursorInSegment < 0 || cursorInSegment > line.text.length) {
+            if (!isCursorLine || cursorColumn < 0 || cursorColumn > line.length) {
               return (
                 <text key={`line-${index}`} fg="#a9b1d6">
-                  {line.text}
+                  {line}
                 </text>
               )
             }
 
-            const cursorAtEnd = cursorInSegment === line.text.length
-            const before = line.text.slice(0, cursorInSegment)
-            const ch = cursorAtEnd ? " " : line.text[cursorInSegment]
-            const after = cursorAtEnd ? "" : line.text.slice(cursorInSegment + 1)
+            const cursorAtEnd = cursorColumn === line.length
+            const before = line.slice(0, cursorColumn)
+            const ch = cursorAtEnd ? " " : line[cursorColumn]
+            const after = cursorAtEnd ? "" : line.slice(cursorColumn + 1)
 
             return (
               <text key={`line-${index}`} fg="#a9b1d6">
@@ -417,8 +377,6 @@ export function DetailPanel({
               </text>
             )
           })
-        ) : (
-          <text fg="#565f89">(empty)</text>
         )}
       </scrollbox>
 
@@ -433,7 +391,7 @@ export function DetailPanel({
           <text fg="#e0af68">Applying...</text>
         ) : (
           <text fg="#414868">
-            {clipLine(`Lines ${viewportTop + 1}-${Math.min(totalWrappedLines, viewportTop + visibleContentRows)} of ${totalWrappedLines}`)}
+            {clipLine(`Lines ${viewportTop + 1}-${Math.min(totalLines, viewportTop + visibleContentRows)} of ${totalLines}`)}
           </text>
         )}
       </box>

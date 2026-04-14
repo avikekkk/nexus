@@ -31,6 +31,7 @@ describe("detailValue utils", () => {
 
   test("stringifyValue and getTypeName", () => {
     expect(stringifyValue(null)).toBe("null")
+    expect(stringifyValue({ icon: "🤖" })).toContain("\\ud83e\\udd16")
     expect(getTypeName([1, 2])).toBe("array")
     expect(getTypeName({})).toBe("object")
   })

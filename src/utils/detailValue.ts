@@ -7,11 +7,24 @@ export function formatBytes(value: unknown): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
 }
 
+function toRawUnicode(text: string): string {
+  let output = ""
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i)
+    if ((code >= 0x20 && code <= 0x7e) || code === 0x0a || code === 0x0d || code === 0x09) {
+      output += text[i]
+      continue
+    }
+    output += `\\u${code.toString(16).padStart(4, "0")}`
+  }
+  return output
+}
+
 export function stringifyValue(value: unknown): string {
   if (value === null || value === undefined) return "null"
-  if (typeof value === "string") return value
+  if (typeof value === "string") return toRawUnicode(value)
   try {
-    return JSON.stringify(value, null, 2)
+    return toRawUnicode(JSON.stringify(value, null, 2))
   } catch {
     return String(value)
   }
