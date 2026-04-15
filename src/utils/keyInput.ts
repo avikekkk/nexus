@@ -15,6 +15,10 @@ export function isShiftEnterKey(key: KeyLike): boolean {
   return isSubmitKey(key) && !!key.shift
 }
 
+export function isInsertNewlineKey(key: KeyLike): boolean {
+  return !!key.ctrl && isSubmitKey(key)
+}
+
 export function isDeleteWordKey(key: KeyLike): boolean {
   return !!key.ctrl && (key.name === "backspace" || key.name === "w")
 }

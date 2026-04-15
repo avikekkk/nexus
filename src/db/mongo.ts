@@ -44,11 +44,13 @@ export function createMongoDriver(): DbDriver {
 
   interface ParsedMongoShellQuery {
     collection: string
+    operation: "find" | "findOne" | "countDocuments" | "aggregate"
     filter: Record<string, unknown>
     projection: Record<string, unknown> | null
     sort: Record<string, 1 | -1>
     skip: number
     limit: number
+    pipeline: Array<Record<string, unknown>>
   }
 
   function splitTopLevelArgs(input: string): string[] {
@@ -167,28 +169,70 @@ export function createMongoDriver(): DbDriver {
     const collection = prefixMatch[1]!
     const suffix = prefixMatch[2] ?? ""
     const calls = parseMethodCalls(suffix)
-    if (calls.length === 0 || calls[0]!.name !== "find") {
-      throw new Error("Mongo query must start with find(), e.g. db.users.find({})")
+    if (calls.length === 0) {
+      throw new Error("Mongo query must include an operation, e.g. db.users.find({})")
     }
 
-    const findArgs = splitTopLevelArgs(calls[0]!.args)
+    const firstCall = calls[0]!
+
+    let operation: ParsedMongoShellQuery["operation"]
     let filter: Record<string, unknown> = {}
     let projection: Record<string, unknown> | null = null
+    let pipeline: Array<Record<string, unknown>> = []
 
-    if (findArgs[0]) {
-      const parsed = parseMongoFilter(findArgs[0])
-      if (parsed.error) {
-        throw new Error(`Filter parse error: ${parsed.error}`)
-      }
-      filter = parsed.filter ?? {}
-    }
+    if (firstCall.name === "find" || firstCall.name === "findOne") {
+      operation = firstCall.name
+      const findArgs = splitTopLevelArgs(firstCall.args)
 
-    if (findArgs[1]) {
-      const parsedProjection = parseMongoFilter(findArgs[1])
-      if (parsedProjection.error) {
-        throw new Error(`Projection parse error: ${parsedProjection.error}`)
+      if (findArgs[0]) {
+        const parsed = parseMongoFilter(findArgs[0])
+        if (parsed.error) {
+          throw new Error(`Filter parse error: ${parsed.error}`)
+        }
+        filter = parsed.filter ?? {}
       }
-      projection = parsedProjection.filter ?? {}
+
+      if (findArgs[1]) {
+        const parsedProjection = parseMongoFilter(findArgs[1])
+        if (parsedProjection.error) {
+          throw new Error(`Projection parse error: ${parsedProjection.error}`)
+        }
+        projection = parsedProjection.filter ?? {}
+      }
+    } else if (firstCall.name === "countDocuments") {
+      operation = "countDocuments"
+      if (firstCall.args) {
+        const parsed = parseMongoFilter(firstCall.args)
+        if (parsed.error) {
+          throw new Error(`Filter parse error: ${parsed.error}`)
+        }
+        filter = parsed.filter ?? {}
+      }
+    } else if (firstCall.name === "aggregate") {
+      operation = "aggregate"
+      if (!firstCall.args) {
+        throw new Error("aggregate() expects a pipeline array")
+      }
+
+      let parsedPipeline: unknown
+      try {
+        parsedPipeline = JSON.parse(firstCall.args)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        throw new Error(`Aggregate parse error: ${msg}`)
+      }
+
+      if (!Array.isArray(parsedPipeline)) {
+        throw new Error("aggregate() expects an array pipeline")
+      }
+
+      if (!parsedPipeline.every((stage) => typeof stage === "object" && stage !== null && !Array.isArray(stage))) {
+        throw new Error("aggregate() pipeline stages must be objects")
+      }
+
+      pipeline = parsedPipeline as Array<Record<string, unknown>>
+    } else {
+      throw new Error(`Unsupported operation: ${firstCall.name}()`)
     }
 
     let sort: Record<string, 1 | -1> = {}
@@ -196,11 +240,16 @@ export function createMongoDriver(): DbDriver {
     let limit = 50
 
     for (const call of calls.slice(1)) {
+      if (operation !== "find") {
+        throw new Error(`${operation}() does not support chained ${call.name}()`)
+      }
+
       if (call.name === "sort") {
         const parsedSort = parseMongoFilter(call.args || "{}")
         if (parsedSort.error) {
           throw new Error(`Sort parse error: ${parsedSort.error}`)
         }
+
         const nextSort: Record<string, 1 | -1> = {}
         for (const [key, value] of Object.entries(parsedSort.filter ?? {})) {
           const numeric = typeof value === "number" ? value : Number(value)
@@ -223,16 +272,18 @@ export function createMongoDriver(): DbDriver {
         continue
       }
 
-      throw new Error(`Unsupported method: ${call.name}()`) 
+      throw new Error(`Unsupported method: ${call.name}()`)
     }
 
     return {
       collection,
+      operation,
       filter,
       projection,
       sort,
       skip,
       limit,
+      pipeline,
     }
   }
 
@@ -351,16 +402,32 @@ export function createMongoDriver(): DbDriver {
       const collection = database.collection<Record<string, unknown>>(parsed.collection)
 
       const start = performance.now()
+      let rows: Record<string, unknown>[] = []
+      let totalCount = 0
 
-      const findOptions = parsed.projection ? { projection: parsed.projection } : undefined
-      let cursor = collection.find(parsed.filter, findOptions)
-      if (Object.keys(parsed.sort).length > 0) {
-        cursor = cursor.sort(parsed.sort)
+      if (parsed.operation === "find") {
+        const findOptions = parsed.projection ? { projection: parsed.projection } : undefined
+        let cursor = collection.find(parsed.filter, findOptions)
+        if (Object.keys(parsed.sort).length > 0) {
+          cursor = cursor.sort(parsed.sort)
+        }
+        cursor = cursor.skip(parsed.skip).limit(parsed.limit)
+        rows = (await cursor.toArray()) as Record<string, unknown>[]
+        totalCount = await collection.countDocuments(parsed.filter)
+      } else if (parsed.operation === "findOne") {
+        const findOptions = parsed.projection ? { projection: parsed.projection } : undefined
+        const doc = await collection.findOne(parsed.filter, findOptions)
+        rows = doc ? [doc as Record<string, unknown>] : []
+        totalCount = rows.length
+      } else if (parsed.operation === "countDocuments") {
+        const count = await collection.countDocuments(parsed.filter)
+        rows = [{ count }]
+        totalCount = 1
+      } else {
+        rows = (await collection.aggregate(parsed.pipeline).toArray()) as Record<string, unknown>[]
+        totalCount = rows.length
       }
-      cursor = cursor.skip(parsed.skip).limit(parsed.limit)
 
-      const rows = (await cursor.toArray()) as Record<string, unknown>[]
-      const totalCount = await collection.countDocuments(parsed.filter)
       const duration = Math.round(performance.now() - start)
 
       const columns: ColumnDef[] = []
@@ -372,7 +439,15 @@ export function createMongoDriver(): DbDriver {
         }
       }
 
-      const query = `db.${parsed.collection}.find(${JSON.stringify(parsed.filter)})`
+      let query = `db.${parsed.collection}.find(${JSON.stringify(parsed.filter)})`
+      if (parsed.operation === "findOne") {
+        query = `db.${parsed.collection}.findOne(${JSON.stringify(parsed.filter)})`
+      } else if (parsed.operation === "countDocuments") {
+        query = `db.${parsed.collection}.countDocuments(${JSON.stringify(parsed.filter)})`
+      } else if (parsed.operation === "aggregate") {
+        query = `db.${parsed.collection}.aggregate(${JSON.stringify(parsed.pipeline)})`
+      }
+
       return { columns, rows, totalCount, duration, query }
     },
 

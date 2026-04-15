@@ -3,7 +3,7 @@ import { useKeyboard } from "@opentui/react"
 import type { MouseEvent as TuiMouseEvent, ScrollBoxRenderable } from "@opentui/core"
 import type { DbType } from "../../db/types.ts"
 import { formatBytes, stringifyValue, parseEditedValue, getTypeName } from "../../utils/detailValue.ts"
-import { deleteWordBackward, getPrintableKey, isDeleteWordKey, isShiftEnterKey } from "../../utils/keyInput.ts"
+import { deleteWordBackward, getPrintableKey, isDeleteWordKey, isInsertNewlineKey } from "../../utils/keyInput.ts"
 
 interface DetailPanelProps {
   width: number
@@ -274,7 +274,7 @@ export function DetailPanel({
       return
     }
 
-    if (isShiftEnterKey(key)) {
+    if (isInsertNewlineKey(key)) {
       const before = value.slice(0, cursorPos)
       const after = value.slice(cursorPos)
       preferredColumnRef.current = null
@@ -414,7 +414,7 @@ export function DetailPanel({
 
       <box height={3} flexDirection="column" paddingX={1}>
         {error ? <text fg="#f7768e">{clipLine(error)}</text> : <text fg="#565f89">{clipLine(`Row preview: ${rowPreview}`)}</text>}
-        <text fg="#565f89">{clipLine("Ctrl+L clear  Shift+Enter newline  PgUp/PgDn scroll")}</text>
+        <text fg="#565f89">{clipLine("Ctrl+L clear  Ctrl+Enter newline  PgUp/PgDn scroll")}</text>
         {isApplying ? (
           <text fg="#e0af68">Applying...</text>
         ) : (

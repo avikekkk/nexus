@@ -1,14 +1,14 @@
+import { fuzzyScore } from "../../../utils/fuzzy.ts"
 import type { CompletionContext, CompletionProvider, CompletionResult, CompletionSuggestion } from "../types.ts"
 
 interface ParsedContext {
-  mode: "collections" | "operations"
-  collection?: string
+  mode: "collections" | "rootOperations" | "chainOperations"
   token: string
   replaceStart: number
   replaceEnd: number
 }
 
-const COLLECTION_OPERATIONS: CompletionSuggestion[] = [
+const ROOT_OPERATIONS: CompletionSuggestion[] = [
   {
     id: "mongo-op-find",
     label: "find({})",
@@ -41,6 +41,9 @@ const COLLECTION_OPERATIONS: CompletionSuggestion[] = [
     cursorOffset: "aggregate([".length,
     detail: "Run aggregation pipeline",
   },
+]
+
+const CHAIN_OPERATIONS: CompletionSuggestion[] = [
   {
     id: "mongo-op-sort",
     label: "sort({})",
@@ -70,18 +73,6 @@ const COLLECTION_OPERATIONS: CompletionSuggestion[] = [
 function parseMongoCompletionContext(query: string, cursor: number): ParsedContext | null {
   const beforeCursor = query.slice(0, cursor)
 
-  const operationsMatch = beforeCursor.match(/db\.([A-Za-z0-9_$]+)\.([A-Za-z0-9_$]*)$/)
-  if (operationsMatch) {
-    const token = operationsMatch[2] ?? ""
-    return {
-      mode: "operations",
-      collection: operationsMatch[1] ?? "",
-      token,
-      replaceStart: cursor - token.length,
-      replaceEnd: cursor,
-    }
-  }
-
   const collectionsMatch = beforeCursor.match(/db\.([A-Za-z0-9_$]*)$/)
   if (collectionsMatch) {
     const token = collectionsMatch[1] ?? ""
@@ -93,21 +84,40 @@ function parseMongoCompletionContext(query: string, cursor: number): ParsedConte
     }
   }
 
+  const operationsMatch = beforeCursor.match(/(.+)\.([A-Za-z0-9_$]*)$/)
+  if (!operationsMatch) return null
+
+  const expression = operationsMatch[1] ?? ""
+  const token = operationsMatch[2] ?? ""
+
+  if (/^db\.[A-Za-z0-9_$]+$/.test(expression)) {
+    return {
+      mode: "rootOperations",
+      token,
+      replaceStart: cursor - token.length,
+      replaceEnd: cursor,
+    }
+  }
+
+  if (/^db\.[A-Za-z0-9_$]+\.find\(/.test(expression)) {
+    return {
+      mode: "chainOperations",
+      token,
+      replaceStart: cursor - token.length,
+      replaceEnd: cursor,
+    }
+  }
+
   return null
 }
 
-function rankByPrefixMatch(items: CompletionSuggestion[], token: string): CompletionSuggestion[] {
-  const normalizedToken = token.toLowerCase()
-  if (!normalizedToken) return items
+function rankSuggestions(items: CompletionSuggestion[], token: string): CompletionSuggestion[] {
+  const scored = items
+    .map((item) => ({ item, score: fuzzyScore(token, item.label) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
 
-  return items
-    .filter((item) => item.label.toLowerCase().includes(normalizedToken))
-    .sort((a, b) => {
-      const aStarts = a.label.toLowerCase().startsWith(normalizedToken)
-      const bStarts = b.label.toLowerCase().startsWith(normalizedToken)
-      if (aStarts !== bStarts) return aStarts ? -1 : 1
-      return a.label.localeCompare(b.label)
-    })
+  return scored.map((entry) => entry.item)
 }
 
 export const mongoCompletionProvider: CompletionProvider = {
@@ -132,17 +142,16 @@ export const mongoCompletionProvider: CompletionProvider = {
         detail: `Switch to database ${name}`,
       }))
 
-      const items = rankByPrefixMatch([...collectionSuggestions, ...siblingDatabaseSuggestions], parsed.token)
       return {
-        items,
+        items: rankSuggestions([...collectionSuggestions, ...siblingDatabaseSuggestions], parsed.token),
         replaceStart: parsed.replaceStart,
         replaceEnd: parsed.replaceEnd,
       }
     }
 
-    const operations = rankByPrefixMatch(COLLECTION_OPERATIONS, parsed.token)
+    const items = parsed.mode === "chainOperations" ? CHAIN_OPERATIONS : ROOT_OPERATIONS
     return {
-      items: operations,
+      items: rankSuggestions(items, parsed.token),
       replaceStart: parsed.replaceStart,
       replaceEnd: parsed.replaceEnd,
     }

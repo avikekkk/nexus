@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useKeyboard } from "@opentui/react"
-import { deleteWordBackward, getPrintableKey, isDeleteWordKey, isShiftEnterKey, isSubmitKey } from "../../utils/keyInput.ts"
+import { deleteWordBackward, getPrintableKey, isDeleteWordKey, isInsertNewlineKey, isSubmitKey } from "../../utils/keyInput.ts"
 import { CompletionMenu } from "../common/CompletionMenu.tsx"
 import { getCompletions } from "../../query/completion/engine.ts"
 import { deleteWithAutoPair, insertWithAutoPair } from "../../query/editor/autoPair.ts"
@@ -122,7 +122,7 @@ export function QueryConsole({
       return
     }
 
-    if (hasCompletion && (key.name === "tab" || (isSubmitKey(key) && !isShiftEnterKey(key)))) {
+    if (hasCompletion && (key.name === "tab" || (isSubmitKey(key) && !isInsertNewlineKey(key)))) {
       const selected = completion?.items[completionIndex]
       if (selected) {
         applyCompletion(selected)
@@ -139,12 +139,12 @@ export function QueryConsole({
       return
     }
 
-    if (isSubmitKey(key) && !isShiftEnterKey(key)) {
+    if (isSubmitKey(key) && !isInsertNewlineKey(key)) {
       onExecute(query)
       return
     }
 
-    if (isShiftEnterKey(key)) {
+    if (isInsertNewlineKey(key)) {
       const next = `${query.slice(0, cursorPos)}\n${query.slice(cursorPos)}`
       updateQuery(next, cursorPos + 1)
       closeCompletion()
@@ -155,11 +155,6 @@ export function QueryConsole({
       const result = deleteWordBackward(query, cursorPos)
       updateQuery(result.value, result.cursor)
       refreshCompletion(result.value, result.cursor)
-      return
-    }
-
-    if (key.ctrl && key.name === "space") {
-      refreshCompletion(query, cursorPos, false)
       return
     }
 
@@ -215,7 +210,7 @@ export function QueryConsole({
 
   return (
     <box flexGrow={1} flexDirection="column" padding={1}>
-      <text fg="#565f89">Enter run • Shift+Enter newline • Esc exit input • Ctrl+Space complete</text>
+      <text fg="#565f89">Enter run • Ctrl+Enter newline • Esc exit input</text>
       <box height={1}>
         <text fg="#414868">{"─".repeat(200)}</text>
       </box>

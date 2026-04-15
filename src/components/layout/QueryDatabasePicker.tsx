@@ -21,6 +21,7 @@ interface QueryDatabasePickerProps {
 export function QueryDatabasePicker({ visible, width, height, options, onSelect, onClose }: QueryDatabasePickerProps) {
   const [query, setQuery] = useState("")
   const [selected, setSelected] = useState(0)
+  const [searchMode, setSearchMode] = useState(false)
 
   const filtered = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
@@ -36,17 +37,26 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
     if (!visible) return
 
     if (key.name === "escape") {
+      if (searchMode) {
+        setSearchMode(false)
+        return
+      }
       onClose()
       return
     }
 
-    if (key.name === "down" || key.name === "j") {
+    if (key.name === "/") {
+      setSearchMode((prev) => !prev)
+      return
+    }
+
+    if (!searchMode && (key.name === "down" || key.name === "j")) {
       if (filtered.length === 0) return
       setSelected((prev) => Math.min(filtered.length - 1, prev + 1))
       return
     }
 
-    if (key.name === "up" || key.name === "k") {
+    if (!searchMode && (key.name === "up" || key.name === "k")) {
       setSelected((prev) => Math.max(0, prev - 1))
       return
     }
@@ -57,6 +67,10 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
       if (option) {
         onSelect(option)
       }
+      return
+    }
+
+    if (!searchMode) {
       return
     }
 
@@ -98,7 +112,11 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
         flexDirection="column"
       >
         <box height={1} paddingX={1}>
-          {query ? <text fg="#c0caf5">Search: {query}</text> : <text fg="#565f89">Type to filter databases</text>}
+          {searchMode ? (
+            query ? <text fg="#c0caf5">Search: {query}</text> : <text fg="#c0caf5">Search: </text>
+          ) : (
+            <text fg="#565f89">Press / to search databases</text>
+          )}
         </box>
         <box height={1} paddingX={1}>
           <text fg="#414868">{"─".repeat(200)}</text>
@@ -124,7 +142,7 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
           )}
         </box>
         <box height={1} paddingX={1}>
-          <text fg="#414868">[Enter] Open query tab  [Esc] Close</text>
+          <text fg="#414868">[Enter] Open query tab  [/] Search  [Esc] {searchMode ? "Exit search" : "Close"}</text>
         </box>
       </box>
     </>
