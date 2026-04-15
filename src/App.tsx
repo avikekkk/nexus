@@ -41,6 +41,7 @@ export function App() {
   const [recentCommands, setRecentCommands] = useState<string[]>([])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [showQueryDatabasePicker, setShowQueryDatabasePicker] = useState(false)
+  const [isQueryInputFocused, setIsQueryInputFocused] = useState(false)
 
   const queryDatabaseOptions = useMemo<QueryDatabaseOption[]>(() => {
     const options: QueryDatabaseOption[] = []
@@ -240,6 +241,9 @@ export function App() {
       return
     }
 
+    const shouldBlockPanelJump = focusZone === "main" && isQueryInputFocused
+    if (shouldBlockPanelJump) return
+
     if (key.name === "1") setFocusZone("sidebar")
     if (key.name === "2") setFocusZone("main")
     if (key.name === "3" && showDetail) setFocusZone("detail")
@@ -288,6 +292,7 @@ export function App() {
           sidebarWidth={sidebarWidth}
           detailWidth={detailWidth}
           onShowToast={showToast}
+          onQueryInputFocusChange={setIsQueryInputFocused}
           onOpenDetail={(tabId, cell) => {
             const tab = state.tabs.find((t) => t.id === tabId)
             const conn = tab ? state.connections.find((c) => c.config.id === tab.connectionId) : undefined

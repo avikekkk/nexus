@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useKeyboard } from "@opentui/react"
 import { useApp } from "../../state/AppContext.tsx"
 import { DataTable, type SelectedCell } from "../main/DataTable.tsx"
 import { FilterBar } from "../main/FilterBar.tsx"
 import { QueryConsole } from "../main/QueryConsole.tsx"
 import { DB_TYPE_ICONS, DB_TYPE_COLORS } from "../../constants/dbIcons.ts"
+import { nodeId } from "../../state/tree.ts"
 
 interface MainPanelProps {
   focused: boolean
@@ -12,15 +13,25 @@ interface MainPanelProps {
   detailWidth: number
   onOpenDetail: (tabId: string, cell: SelectedCell) => void
   onShowToast: (message: string) => void
+  onQueryInputFocusChange?: (focused: boolean) => void
 }
 
-export function MainPanel({ focused, sidebarWidth, detailWidth, onOpenDetail, onShowToast }: MainPanelProps) {
-  const { state, dispatch, closeTab, nextTab, prevTab, fetchTabData, setTabFilter, setTabSort } = useApp()
+export function MainPanel({
+  focused,
+  sidebarWidth,
+  detailWidth,
+  onOpenDetail,
+  onShowToast,
+  onQueryInputFocusChange,
+}: MainPanelProps) {
+  const { state, dispatch, closeTab, nextTab, prevTab, fetchTabData, setTabFilter, setTabSort, getDriver } = useApp()
   const borderColor = focused ? "#7aa2f7" : "#414868"
   const { tabs, activeTabId, tabData, connections } = state
   const fetchedTabs = useRef(new Set<string>())
   const [filterBarFocused, setFilterBarFocused] = useState(false)
   const [queryInputFocused, setQueryInputFocused] = useState(true)
+  const [querySchemaCollections, setQuerySchemaCollections] = useState<string[]>([])
+  const querySchemaCacheRef = useRef(new Map<string, string[]>())
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
   const activeData = activeTabId ? tabData.get(activeTabId) : undefined
@@ -28,6 +39,18 @@ export function MainPanel({ focused, sidebarWidth, detailWidth, onOpenDetail, on
   const isQueryResultTab = activeTab?.kind === "query-result"
   const activeConnection = activeTab ? connections.find((c) => c.config.id === activeTab.connectionId) : undefined
   const dbType = activeConnection?.config.type ?? "mongo"
+
+  const schemaDatabases = useMemo(() => {
+    if (!activeTab) return []
+    return state.allDatabases.get(activeTab.connectionId) ?? []
+  }, [activeTab, state.allDatabases])
+
+  const schemaCollectionsFromTree = useMemo(() => {
+    if (!activeTab) return []
+    const dbNode = nodeId(activeTab.connectionId, activeTab.database)
+    const treeCollections = state.treeChildren.get(dbNode) ?? []
+    return treeCollections.map((item) => item.label)
+  }, [activeTab, state.treeChildren])
 
   useEffect(() => {
     if (activeTabId && !fetchedTabs.current.has(activeTabId)) {
@@ -48,6 +71,57 @@ export function MainPanel({ focused, sidebarWidth, detailWidth, onOpenDetail, on
       setQueryInputFocused(true)
     }
   }, [isQueryConsoleTab, activeTabId])
+
+  useEffect(() => {
+    onQueryInputFocusChange?.(isQueryConsoleTab && queryInputFocused)
+  }, [isQueryConsoleTab, queryInputFocused, onQueryInputFocusChange])
+
+  useEffect(() => {
+    if (!isQueryConsoleTab || !activeTab) {
+      setQuerySchemaCollections([])
+      return
+    }
+
+    const cacheKey = `${activeTab.connectionId}/${activeTab.database}`
+
+    if (schemaCollectionsFromTree.length > 0) {
+      querySchemaCacheRef.current.set(cacheKey, schemaCollectionsFromTree)
+      setQuerySchemaCollections(schemaCollectionsFromTree)
+      return
+    }
+
+    const cached = querySchemaCacheRef.current.get(cacheKey)
+    if (cached && cached.length > 0) {
+      setQuerySchemaCollections(cached)
+      return
+    }
+
+    const driver = getDriver(activeTab.connectionId)
+    if (!driver) {
+      setQuerySchemaCollections([])
+      return
+    }
+
+    let cancelled = false
+
+    driver
+      .listCollections(activeTab.database)
+      .then((collections) => {
+        if (cancelled) return
+        const names = collections.map((collection) => collection.name)
+        querySchemaCacheRef.current.set(cacheKey, names)
+        setQuerySchemaCollections(names)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setQuerySchemaCollections([])
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTab, getDriver, isQueryConsoleTab, schemaCollectionsFromTree])
 
   useKeyboard((key) => {
     if (!focused) return
@@ -262,6 +336,10 @@ export function MainPanel({ focused, sidebarWidth, detailWidth, onOpenDetail, on
             focused={focused && queryInputFocused}
             query={activeData?.filter || ""}
             error={activeData?.error}
+            dbType={dbType}
+            database={activeTab.database}
+            schemaDatabases={schemaDatabases}
+            schemaCollections={querySchemaCollections}
             onChange={(next) => setTabFilter(activeTab.id, next)}
             onExecute={handleFilterExecute}
             onBlur={() => setQueryInputFocused(false)}
