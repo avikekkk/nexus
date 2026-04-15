@@ -13,6 +13,7 @@ export interface Tab {
   connectionId: string
   database: string
   collection: string
+  kind?: "collection" | "query-console" | "query-result"
 }
 
 export interface TabData {
@@ -46,6 +47,7 @@ interface AppState {
 
 const MAX_VISIBLE_DATABASES = 10
 const MAX_ROWS_PER_TAB_CACHE = 500
+const TABLE_PAGE_SIZE = 20
 
 type AppAction =
   | { type: "SET_CONNECTIONS"; configs: ConnectionConfig[] }
@@ -88,12 +90,13 @@ interface AppContextValue {
   toggleExpand: (nid: string, connectionId: string, database?: string) => void
   selectNode: (nid: string | null) => void
   openCollection: (connectionId: string, database: string, collection: string) => void
+  openQueryConsole: (connectionId: string, database: string) => string
   closeTab: (tabId: string) => void
   closeOtherTabs: (tabId: string) => void
   closeAllTabs: () => void
   nextTab: () => void
   prevTab: () => void
-  fetchTabData: (tabId: string, offset?: number, pageSize?: number, filter?: string) => void
+  fetchTabData: (tabId: string, offset?: number, pageSize?: number, filter?: string) => Promise<QueryResult | null>
   updateTabCell: (tabId: string, row: Record<string, unknown>, field: string, value: unknown) => Promise<void>
   setTabFilter: (tabId: string, filter: string) => void
   setTabSort: (tabId: string, sort: Record<string, 1 | -1> | null) => void
@@ -585,8 +588,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
         connectionId,
         database,
         collection,
+        kind: "collection",
       }
       dispatch({ type: "OPEN_TAB", tab })
+    },
+    [log, state.connections]
+  )
+
+  const openQueryConsole = useCallback(
+    (connectionId: string, database: string): string => {
+      const tabId = `${connectionId}/${database}/__query_console__/${Date.now()}`
+      const tab: Tab = {
+        id: tabId,
+        label: `Query console [${database}]`,
+        connectionId,
+        database,
+        collection: "__query_console__",
+        kind: "query-console",
+      }
+
+      dispatch({ type: "OPEN_TAB", tab })
+      dispatch({
+        type: "SET_TAB_DATA",
+        tabId,
+        data: {
+          result: null,
+          loading: false,
+          error: null,
+          filter: "",
+          currentOffset: 0,
+          customQuery: true,
+        },
+      })
+
+      const conn = state.connections.find((c) => c.config.id === connectionId)
+      const connLabel = conn?.config.name ?? connectionId
+      log("info", "query", `Opened query console for ${connLabel}/${database}`)
+      return tabId
     },
     [log, state.connections]
   )
@@ -612,54 +650,78 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const fetchTabData = useCallback(
-    (tabId: string, offset?: number, pageSize?: number, filter?: string) => {
+    async (tabId: string, offset?: number, pageSize?: number, filter?: string): Promise<QueryResult | null> => {
       const tab = state.tabs.find((t) => t.id === tabId)
-      if (!tab) return
-      const driver = driverMap.get(tab.connectionId)
-      if (!driver) return
-      const conn = state.connections.find((c) => c.config.id === tab.connectionId)
-      if (!conn) return
+      if (!tab) return null
 
-      const dbType = conn?.config.type ?? "unknown"
-      const itemName = dbType === "mysql" ? "table" : dbType === "redis" ? "keys" : "collection"
+      const driver = driverMap.get(tab.connectionId)
+      if (!driver) return null
+
+      const conn = state.connections.find((c) => c.config.id === tab.connectionId)
+      if (!conn) return null
+
+      const dbType = conn.config.type
+      const itemName = tab.kind === "query-console" ? "database" : dbType === "mysql" ? "table" : dbType === "redis" ? "keys" : "collection"
 
       const tabDataEntry = state.tabData.get(tabId)
-      const limit = pageSize ?? tabDataEntry?.pageSize ?? 20
+      const limit = TABLE_PAGE_SIZE
       const off = offset ?? tabDataEntry?.currentOffset ?? 0
-      const activeFilter = filter !== undefined ? filter : (tabDataEntry?.filter || undefined)
+      const activeFilter = filter !== undefined ? filter : (tabDataEntry?.filter || "")
+
+      if (tab.kind === "query-console" && !activeFilter.trim()) {
+        dispatch({
+          type: "SET_TAB_DATA",
+          tabId,
+          data: { result: null, loading: false, error: null, filter: "", currentOffset: 0 },
+        })
+        return null
+      }
 
       dispatch({
         type: "SET_TAB_DATA",
         tabId,
-        data: { loading: true, error: null, pageSize: limit, currentOffset: off },
+        data: { loading: true, error: null, pageSize: TABLE_PAGE_SIZE, currentOffset: off },
       })
 
-      log("info", "query", `Querying ${itemName} ${tab.collection} in database ${tab.database}...`)
-      ;(async () => {
+      try {
         if (!driver.isConnected()) {
           log("warning", "connection", `Connection dropped for ${conn.config.name}, reconnecting...`)
           await driver.connect(conn.config)
           log("success", "connection", `Reconnected to ${conn.config.name}`)
         }
 
-        return driver.query({
-          database: tab.database,
-          collection: tab.collection,
-          limit,
-          offset: off,
-          rawQuery: activeFilter || undefined,
-          sort: tabDataEntry?.sort || undefined,
-        })
-      })()
-        .then((result) => {
-          dispatch({ type: "SET_TAB_DATA", tabId, data: { result, loading: false } })
-          log("info", "query", `${result.query} — ${result.duration}ms, ${result.rows.length} rows`)
-        })
-        .catch((e) => {
-          const msg = e instanceof Error ? e.message : String(e)
-          dispatch({ type: "SET_TAB_DATA", tabId, data: { loading: false, error: msg } })
-          log("error", "query", `Failed to query ${itemName} ${tab.collection}: ${msg}`)
-        })
+        const result =
+          tab.kind === "query-console"
+            ? await driver.queryDatabase?.({
+                database: tab.database,
+                rawQuery: activeFilter,
+                limit,
+                offset: off,
+                sort: tabDataEntry?.sort || undefined,
+              })
+            : await driver.query({
+                database: tab.database,
+                collection: tab.collection,
+                limit,
+                offset: off,
+                rawQuery: activeFilter || undefined,
+                sort: tabDataEntry?.sort || undefined,
+              })
+
+        if (!result) {
+          throw new Error("This database driver does not support database-level queries")
+        }
+
+        dispatch({ type: "SET_TAB_DATA", tabId, data: { result, loading: false } })
+        log("info", "query", `${result.query} — ${result.duration}ms, ${result.rows.length} rows`)
+        return result
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        dispatch({ type: "SET_TAB_DATA", tabId, data: { loading: false, error: msg } })
+        const targetLabel = tab.kind === "query-console" ? tab.database : tab.collection
+        log("error", "query", `Failed to query ${itemName} ${targetLabel}: ${msg}`)
+        return null
+      }
     },
     [state.tabs, state.connections, state.tabData, log]
   )
@@ -796,6 +858,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         toggleExpand,
         selectNode,
         openCollection,
+        openQueryConsole,
         closeTab,
         closeOtherTabs,
         closeAllTabs,

@@ -1,5 +1,6 @@
 import Redis from "ioredis"
 import type {
+  DatabaseQueryOpts,
   DbDriver,
   CollectionInfo,
   ColumnDef,
@@ -425,6 +426,16 @@ export function createRedisDriver(): DbDriver {
 
       const duration = Math.round(performance.now() - start)
       return { columns, rows, totalCount: allKeys.length, duration, query: `SCAN 0 MATCH ${pattern} COUNT 100` }
+    },
+
+    async queryDatabase(opts: DatabaseQueryOpts) {
+      return this.query({
+        database: opts.database,
+        collection: "*",
+        rawQuery: opts.rawQuery,
+        limit: opts.limit,
+        offset: opts.offset,
+      })
     },
 
     async updateField(opts: UpdateFieldOpts): Promise<UpdateFieldResult> {

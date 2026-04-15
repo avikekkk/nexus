@@ -50,6 +50,7 @@ const COLORS = {
 const MIN_COL_WIDTH = 6
 const MAX_COL_WIDTH = 40
 const SAMPLE_ROWS = 20
+const FIXED_PAGE_SIZE = 20
 const ROW_NUM_WIDTH = 4
 const COL_SEPARATOR = "│"
 const COL_PADDING = " "
@@ -116,7 +117,7 @@ export function DataTable({
   result,
   focused,
   currentOffset,
-  pageSize,
+  pageSize: _pageSize,
   onPageChange,
   onCellSelect,
   onColumnSort,
@@ -132,7 +133,20 @@ export function DataTable({
   const [viewportRowOffset, setViewportRowOffset] = useState(0)
   const [viewportColOffset, setViewportColOffset] = useState(0)
 
-  const { columns, rows, totalCount } = result
+  const { columns, rows: allRows, totalCount } = result
+  const usesLocalPagination = !onPageChange
+  const [localOffset, setLocalOffset] = useState(0)
+  const effectivePageSize = FIXED_PAGE_SIZE
+  const effectiveOffset = usesLocalPagination ? localOffset : currentOffset
+  const rows = usesLocalPagination ? allRows.slice(localOffset, localOffset + effectivePageSize) : allRows
+  const totalRows = usesLocalPagination ? allRows.length : totalCount
+
+  useEffect(() => {
+    if (!usesLocalPagination) return
+    setLocalOffset(0)
+    setSelectedRow(0)
+    setViewportRowOffset(0)
+  }, [usesLocalPagination, allRows])
 
   // Reset selection when data changes (e.g., page change)
   useEffect(() => {
@@ -214,10 +228,10 @@ export function DataTable({
   const visibleRowCount = availableHeight
 
   // Pagination
-  const currentPage = Math.floor(currentOffset / pageSize) + 1
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
-  const hasNextPage = currentOffset + pageSize < totalCount
-  const hasPrevPage = currentOffset > 0
+  const currentPage = Math.floor(effectiveOffset / effectivePageSize) + 1
+  const totalPages = Math.max(1, Math.ceil(totalRows / effectivePageSize))
+  const hasNextPage = effectiveOffset + effectivePageSize < totalRows
+  const hasPrevPage = effectiveOffset > 0
 
   // Adjust viewport to keep selection visible (called when selection moves)
   const ensureSelectionVisible = useCallback(
@@ -374,14 +388,22 @@ export function DataTable({
     }
 
     // Database pagination: n = next page, p = prev page
-    if (key.name === "n" && hasNextPage && onPageChange) {
-      onPageChange(currentOffset + pageSize)
+    if (key.name === "n" && hasNextPage) {
+      if (onPageChange) {
+        onPageChange(effectiveOffset + effectivePageSize)
+      } else {
+        setLocalOffset((prev) => prev + effectivePageSize)
+      }
       setSelectedRow(0)
       setViewportRowOffset(0)
       return
     }
-    if (key.name === "p" && hasPrevPage && onPageChange) {
-      onPageChange(Math.max(0, currentOffset - pageSize))
+    if (key.name === "p" && hasPrevPage) {
+      if (onPageChange) {
+        onPageChange(Math.max(0, effectiveOffset - effectivePageSize))
+      } else {
+        setLocalOffset((prev) => Math.max(0, prev - effectivePageSize))
+      }
       setSelectedRow(0)
       setViewportRowOffset(0)
       return
@@ -440,7 +462,7 @@ export function DataTable({
 
   // Build row number column width
   const rowNumStr = (idx: number) => {
-    const num = String(currentOffset + idx + 1)
+    const num = String(effectiveOffset + idx + 1)
     return num.length < ROW_NUM_WIDTH ? " ".repeat(ROW_NUM_WIDTH - num.length) + num : num
   }
 
@@ -551,7 +573,7 @@ export function DataTable({
 
   // Pagination bar
   const pageInfo = `Page ${currentPage}/${totalPages}`
-  const rowRange = rows.length > 0 ? `Rows ${currentOffset + 1}–${currentOffset + rows.length} of ${totalCount}` : "No rows"
+  const rowRange = rows.length > 0 ? `Rows ${effectiveOffset + 1}–${effectiveOffset + rows.length} of ${totalRows}` : "No rows"
   const colInfo = `Col ${selectedCol + 1}/${columns.length}`
   const navHint = [hasPrevPage ? "[p]prev" : "", hasNextPage ? "[n]next" : ""].filter(Boolean).join("  ")
   const filterHints = filterBarActive ? "[Enter] Run  [Esc] Close  [⌃L] Clear" : "[/]filter  [s]sort"

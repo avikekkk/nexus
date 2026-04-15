@@ -45,6 +45,14 @@ export interface QueryOpts {
   rawQuery?: string
 }
 
+export interface DatabaseQueryOpts {
+  database: string
+  rawQuery: string
+  sort?: Record<string, 1 | -1>
+  limit?: number
+  offset?: number
+}
+
 export interface QueryResult {
   columns: ColumnDef[]
   rows: Record<string, unknown>[]
@@ -77,6 +85,7 @@ export interface DbDriver {
   searchCollectionsPage?(db: string, query: string, cursor?: string | null, limit?: number): Promise<CollectionPage>
   countCollections?(db: string): Promise<number>
   query(opts: QueryOpts): Promise<QueryResult>
+  queryDatabase?(opts: DatabaseQueryOpts): Promise<QueryResult>
   updateField?(opts: UpdateFieldOpts): Promise<UpdateFieldResult>
 }
 

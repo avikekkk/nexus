@@ -1,6 +1,7 @@
 import { MongoClient, ObjectId, type Db } from "mongodb"
 import type {
   ConnectionConfig,
+  DatabaseQueryOpts,
   DbDriver,
   CollectionInfo,
   ColumnDef,
@@ -39,6 +40,200 @@ export function createMongoDriver(): DbDriver {
       return new ObjectId(id)
     }
     return id
+  }
+
+  interface ParsedMongoShellQuery {
+    collection: string
+    filter: Record<string, unknown>
+    projection: Record<string, unknown> | null
+    sort: Record<string, 1 | -1>
+    skip: number
+    limit: number
+  }
+
+  function splitTopLevelArgs(input: string): string[] {
+    const args: string[] = []
+    let start = 0
+    let depth = 0
+    let quote: '"' | "'" | null = null
+
+    for (let i = 0; i < input.length; i++) {
+      const char = input[i]!
+      const prev = i > 0 ? input[i - 1] : ""
+
+      if (quote) {
+        if (char === quote && prev !== "\\") {
+          quote = null
+        }
+        continue
+      }
+
+      if (char === '"' || char === "'") {
+        quote = char
+        continue
+      }
+
+      if (char === "{" || char === "[" || char === "(") depth++
+      if (char === "}" || char === "]" || char === ")") depth--
+
+      if (char === "," && depth === 0) {
+        args.push(input.slice(start, i).trim())
+        start = i + 1
+      }
+    }
+
+    const last = input.slice(start).trim()
+    if (last) args.push(last)
+    return args
+  }
+
+  function parseMethodCalls(input: string): Array<{ name: string; args: string }> {
+    const calls: Array<{ name: string; args: string }> = []
+    let i = 0
+
+    while (i < input.length) {
+      while (i < input.length && /\s/.test(input[i]!)) i++
+      if (i >= input.length) break
+      if (input[i] === ";") {
+        i++
+        continue
+      }
+
+      if (input[i] !== ".") {
+        throw new Error("Invalid query syntax")
+      }
+      i++
+
+      const nameStart = i
+      while (i < input.length && /[a-zA-Z]/.test(input[i]!)) i++
+      const name = input.slice(nameStart, i)
+      if (!name) throw new Error("Invalid query syntax")
+
+      while (i < input.length && /\s/.test(input[i]!)) i++
+      if (input[i] !== "(") throw new Error(`Method ${name} must use parentheses`)
+      i++
+
+      const argStart = i
+      let depth = 1
+      let quote: '"' | "'" | null = null
+      while (i < input.length && depth > 0) {
+        const char = input[i]!
+        const prev = i > 0 ? input[i - 1] : ""
+
+        if (quote) {
+          if (char === quote && prev !== "\\") quote = null
+          i++
+          continue
+        }
+
+        if (char === '"' || char === "'") {
+          quote = char
+          i++
+          continue
+        }
+
+        if (char === "(") depth++
+        if (char === ")") depth--
+        i++
+      }
+
+      if (depth !== 0) throw new Error(`Unclosed parentheses in ${name}()`)
+
+      const args = input.slice(argStart, i - 1).trim()
+      calls.push({ name, args })
+    }
+
+    return calls
+  }
+
+  function parseIntArg(value: string, method: "skip" | "limit"): number {
+    if (!/^\d+$/.test(value.trim())) {
+      throw new Error(`${method}() expects a non-negative integer`)
+    }
+    return Number.parseInt(value.trim(), 10)
+  }
+
+  function parseMongoShellQuery(rawQuery: string): ParsedMongoShellQuery {
+    const trimmed = rawQuery.trim()
+    if (!trimmed) {
+      throw new Error("Query is empty")
+    }
+
+    const prefixMatch = trimmed.match(/^db\.([A-Za-z0-9_]+)(.*)$/s)
+    if (!prefixMatch) {
+      throw new Error("Use shell-style syntax: db.collection.find({...}).limit(50)")
+    }
+
+    const collection = prefixMatch[1]!
+    const suffix = prefixMatch[2] ?? ""
+    const calls = parseMethodCalls(suffix)
+    if (calls.length === 0 || calls[0]!.name !== "find") {
+      throw new Error("Mongo query must start with find(), e.g. db.users.find({})")
+    }
+
+    const findArgs = splitTopLevelArgs(calls[0]!.args)
+    let filter: Record<string, unknown> = {}
+    let projection: Record<string, unknown> | null = null
+
+    if (findArgs[0]) {
+      const parsed = parseMongoFilter(findArgs[0])
+      if (parsed.error) {
+        throw new Error(`Filter parse error: ${parsed.error}`)
+      }
+      filter = parsed.filter ?? {}
+    }
+
+    if (findArgs[1]) {
+      const parsedProjection = parseMongoFilter(findArgs[1])
+      if (parsedProjection.error) {
+        throw new Error(`Projection parse error: ${parsedProjection.error}`)
+      }
+      projection = parsedProjection.filter ?? {}
+    }
+
+    let sort: Record<string, 1 | -1> = {}
+    let skip = 0
+    let limit = 50
+
+    for (const call of calls.slice(1)) {
+      if (call.name === "sort") {
+        const parsedSort = parseMongoFilter(call.args || "{}")
+        if (parsedSort.error) {
+          throw new Error(`Sort parse error: ${parsedSort.error}`)
+        }
+        const nextSort: Record<string, 1 | -1> = {}
+        for (const [key, value] of Object.entries(parsedSort.filter ?? {})) {
+          const numeric = typeof value === "number" ? value : Number(value)
+          if (numeric !== 1 && numeric !== -1) {
+            throw new Error("Sort values must be 1 or -1")
+          }
+          nextSort[key] = numeric as 1 | -1
+        }
+        sort = nextSort
+        continue
+      }
+
+      if (call.name === "skip") {
+        skip = parseIntArg(call.args, "skip")
+        continue
+      }
+
+      if (call.name === "limit") {
+        limit = parseIntArg(call.args, "limit")
+        continue
+      }
+
+      throw new Error(`Unsupported method: ${call.name}()`) 
+    }
+
+    return {
+      collection,
+      filter,
+      projection,
+      sort,
+      skip,
+      limit,
+    }
   }
 
   return {
@@ -148,6 +343,37 @@ export function createMongoDriver(): DbDriver {
       const queryStr = `db.${opts.collection}.find(${filterStr})${sortStr}.skip(${offset}).limit(${limit})`
 
       return { columns, rows, totalCount, duration, query: queryStr }
+    },
+
+    async queryDatabase(opts: DatabaseQueryOpts) {
+      const parsed = parseMongoShellQuery(opts.rawQuery)
+      const database = getDb(opts.database)
+      const collection = database.collection<Record<string, unknown>>(parsed.collection)
+
+      const start = performance.now()
+
+      const findOptions = parsed.projection ? { projection: parsed.projection } : undefined
+      let cursor = collection.find(parsed.filter, findOptions)
+      if (Object.keys(parsed.sort).length > 0) {
+        cursor = cursor.sort(parsed.sort)
+      }
+      cursor = cursor.skip(parsed.skip).limit(parsed.limit)
+
+      const rows = (await cursor.toArray()) as Record<string, unknown>[]
+      const totalCount = await collection.countDocuments(parsed.filter)
+      const duration = Math.round(performance.now() - start)
+
+      const columns: ColumnDef[] = []
+      if (rows.length > 0) {
+        const first = rows[0]!
+        for (const key of Object.keys(first)) {
+          const val = first[key]
+          columns.push({ name: key, type: val === null ? "null" : typeof val })
+        }
+      }
+
+      const query = `db.${parsed.collection}.find(${JSON.stringify(parsed.filter)})`
+      return { columns, rows, totalCount, duration, query }
     },
 
     async updateField(opts: UpdateFieldOpts): Promise<UpdateFieldResult> {

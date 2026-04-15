@@ -1,5 +1,5 @@
 import mysql from "mysql2/promise"
-import type { DbDriver, ColumnDef, CollectionPage, UpdateFieldOpts, UpdateFieldResult } from "./types.ts"
+import type { DbDriver, ColumnDef, CollectionPage, DatabaseQueryOpts, UpdateFieldOpts, UpdateFieldResult } from "./types.ts"
 import { parseMySQLQuery, sortToOrderBy } from "../utils/queryParser.ts"
 
 export function createMysqlDriver(): DbDriver {
@@ -150,6 +150,34 @@ export function createMysqlDriver(): DbDriver {
       const totalCount = (countRows as Array<{ cnt: number }>)[0]?.cnt ?? resultRows.length
 
       return { columns, rows: resultRows, totalCount, duration, query: dataQuery }
+    },
+
+    async queryDatabase(opts: DatabaseQueryOpts) {
+      if (!connection) throw new Error("Not connected")
+
+      const statement = opts.rawQuery.trim()
+      if (!statement) {
+        throw new Error("Query is empty")
+      }
+
+      await connection.query(`USE \`${opts.database}\``)
+
+      const start = performance.now()
+      const [rows, fields] = await connection.query(statement)
+      const duration = Math.round(performance.now() - start)
+
+      const resultRows = Array.isArray(rows) ? (rows as Record<string, unknown>[]) : []
+      const columns: ColumnDef[] = Array.isArray(fields)
+        ? fields.map((f: any) => ({ name: f.name, type: String(f.type ?? "unknown") }))
+        : []
+
+      return {
+        columns,
+        rows: resultRows,
+        totalCount: resultRows.length,
+        duration,
+        query: statement,
+      }
     },
 
     async updateField(opts: UpdateFieldOpts): Promise<UpdateFieldResult> {

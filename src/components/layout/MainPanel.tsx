@@ -3,6 +3,7 @@ import { useKeyboard } from "@opentui/react"
 import { useApp } from "../../state/AppContext.tsx"
 import { DataTable, type SelectedCell } from "../main/DataTable.tsx"
 import { FilterBar } from "../main/FilterBar.tsx"
+import { QueryConsole } from "../main/QueryConsole.tsx"
 import { DB_TYPE_ICONS, DB_TYPE_COLORS } from "../../constants/dbIcons.ts"
 
 interface MainPanelProps {
@@ -10,39 +11,79 @@ interface MainPanelProps {
   sidebarWidth: number
   detailWidth: number
   onOpenDetail: (tabId: string, cell: SelectedCell) => void
+  onShowToast: (message: string) => void
 }
 
-export function MainPanel({ focused, sidebarWidth, detailWidth, onOpenDetail }: MainPanelProps) {
-  const { state, closeTab, nextTab, prevTab, fetchTabData, setTabFilter, setTabSort } = useApp()
+export function MainPanel({ focused, sidebarWidth, detailWidth, onOpenDetail, onShowToast }: MainPanelProps) {
+  const { state, dispatch, closeTab, nextTab, prevTab, fetchTabData, setTabFilter, setTabSort } = useApp()
   const borderColor = focused ? "#7aa2f7" : "#414868"
   const { tabs, activeTabId, tabData, connections } = state
   const fetchedTabs = useRef(new Set<string>())
   const [filterBarFocused, setFilterBarFocused] = useState(false)
+  const [queryInputFocused, setQueryInputFocused] = useState(true)
 
-  // Auto-fetch data when a tab becomes active
+  const activeTab = tabs.find((t) => t.id === activeTabId)
+  const activeData = activeTabId ? tabData.get(activeTabId) : undefined
+  const isQueryConsoleTab = activeTab?.kind === "query-console"
+  const isQueryResultTab = activeTab?.kind === "query-result"
+  const activeConnection = activeTab ? connections.find((c) => c.config.id === activeTab.connectionId) : undefined
+  const dbType = activeConnection?.config.type ?? "mongo"
+
   useEffect(() => {
     if (activeTabId && !fetchedTabs.current.has(activeTabId)) {
+      const tab = tabs.find((t) => t.id === activeTabId)
+      if (tab?.kind === "query-console" || tab?.kind === "query-result") return
+
       const data = tabData.get(activeTabId)
       if (!data || (!data.result && !data.loading && !data.error)) {
         fetchedTabs.current.add(activeTabId)
-        fetchTabData(activeTabId)
+        void fetchTabData(activeTabId)
       }
     }
-  }, [activeTabId])
+  }, [activeTabId, fetchTabData, tabData, tabs])
+
+  useEffect(() => {
+    if (isQueryConsoleTab) {
+      setFilterBarFocused(false)
+      setQueryInputFocused(true)
+    }
+  }, [isQueryConsoleTab, activeTabId])
 
   useKeyboard((key) => {
     if (!focused) return
 
-    // Filter bar toggle: f or /
-    if ((key.name === "f" || key.name === "/") && activeTab && !filterBarFocused) {
+    if (isQueryConsoleTab) {
+      if (!queryInputFocused) {
+        if (key.name === "]") {
+          nextTab()
+          return
+        }
+        if (key.name === "[") {
+          prevTab()
+          return
+        }
+        if (key.name === "return" || key.name === "enter") {
+          setQueryInputFocused(true)
+          return
+        }
+        if ((key.ctrl && key.name === "w") || key.name === "w") {
+          if (activeTabId) {
+            fetchedTabs.current.delete(activeTabId)
+            closeTab(activeTabId)
+          }
+          return
+        }
+      }
+      return
+    }
+
+    if ((key.name === "f" || key.name === "/") && activeTab && !filterBarFocused && !isQueryResultTab) {
       setFilterBarFocused(true)
       return
     }
 
-    // Don't process other keys if filter bar is focused
     if (filterBarFocused) return
 
-    // Tab switching: ] = next, [ = prev
     if (key.name === "]") {
       nextTab()
       return
@@ -52,7 +93,6 @@ export function MainPanel({ focused, sidebarWidth, detailWidth, onOpenDetail }: 
       return
     }
 
-    // Close tab: Ctrl+W or w
     if ((key.ctrl && key.name === "w") || key.name === "w") {
       if (activeTabId) {
         fetchedTabs.current.delete(activeTabId)
@@ -61,28 +101,22 @@ export function MainPanel({ focused, sidebarWidth, detailWidth, onOpenDetail }: 
       return
     }
 
-    // Reload: r
     if (key.name === "r") {
-      if (activeTabId) {
+      if (activeTabId && !isQueryResultTab) {
         fetchedTabs.current.delete(activeTabId)
-        fetchTabData(activeTabId)
+        void fetchTabData(activeTabId)
       }
       return
     }
   })
 
-  const activeTab = tabs.find((t) => t.id === activeTabId)
-  const activeData = activeTabId ? tabData.get(activeTabId) : undefined
-  const activeConnection = activeTab ? connections.find((c) => c.config.id === activeTab.connectionId) : undefined
-  const dbType = activeConnection?.config.type ?? "mongo"
-
   const handlePageChange = useCallback(
     (offset: number) => {
-      if (activeTabId && activeData) {
-        fetchTabData(activeTabId, offset, activeData.pageSize)
+      if (activeTabId && activeData && !isQueryResultTab) {
+        void fetchTabData(activeTabId, offset, activeData.pageSize)
       }
     },
-    [activeTabId, activeData, fetchTabData]
+    [activeTabId, activeData, isQueryResultTab, fetchTabData]
   )
 
   const handleSortChange = useCallback(
@@ -94,81 +128,123 @@ export function MainPanel({ focused, sidebarWidth, detailWidth, onOpenDetail }: 
     [activeTabId, setTabSort]
   )
 
-  const handleFilterExecute = useCallback((filter: string) => {
-    if (activeTabId) {
+  const handleFilterExecute = useCallback(
+    async (filter: string) => {
+      if (!activeTabId || !activeTab) return
+
       setTabFilter(activeTabId, filter)
       fetchedTabs.current.delete(activeTabId)
-      fetchTabData(activeTabId, 0, undefined, filter) // Pass filter directly
+
+      const result = await fetchTabData(activeTabId, 0, undefined, filter)
+      if (!result) return
+
+      if (result.rows.length === 0) {
+        onShowToast("No data returned")
+        return
+      }
+
+      if (activeTab.kind === "query-console") {
+        const resultTabId = `${activeTab.connectionId}/${activeTab.database}/__query_result__/${Date.now()}`
+        dispatch({
+          type: "OPEN_TAB",
+          tab: {
+            id: resultTabId,
+            label: `Query result [${activeTab.database}]`,
+            connectionId: activeTab.connectionId,
+            database: activeTab.database,
+            collection: "__query_result__",
+            kind: "query-result",
+          },
+        })
+        dispatch({
+          type: "SET_TAB_DATA",
+          tabId: resultTabId,
+          data: {
+            result,
+            loading: false,
+            error: null,
+            pageSize: 20,
+            currentOffset: 0,
+            filter,
+            sort: null,
+            customQuery: true,
+          },
+        })
+        return
+      }
+
       setFilterBarFocused(false)
-    }
-  }, [activeTabId, setTabFilter, fetchTabData])
+    },
+    [activeTabId, activeTab, dispatch, fetchTabData, onShowToast, setTabFilter]
+  )
 
   const handleFilterClear = useCallback(() => {
-    if (activeTabId) {
-      setTabFilter(activeTabId, "")
-      setTabSort(activeTabId, null)
-      fetchedTabs.current.delete(activeTabId)
-      fetchTabData(activeTabId, 0)
+    if (!activeTabId) return
+    if (activeTab?.kind === "query-result") return
+
+    setTabFilter(activeTabId, "")
+
+    if (activeTab?.kind === "query-console") {
+      return
     }
-  }, [activeTabId, setTabFilter, setTabSort, fetchTabData])
+
+    setTabSort(activeTabId, null)
+    fetchedTabs.current.delete(activeTabId)
+    void fetchTabData(activeTabId, 0, undefined, "")
+  }, [activeTabId, activeTab, setTabFilter, setTabSort, fetchTabData])
 
   const handleColumnSort = useCallback(
     (column: string, direction: 1 | -1) => {
-      if (activeTabId) {
-        // Single column sort (replace existing sort)
+      if (activeTabId && !isQueryResultTab) {
         setTabSort(activeTabId, { [column]: direction })
         fetchedTabs.current.delete(activeTabId)
-        fetchTabData(activeTabId, 0) // Reset to page 0 on sort change
+        void fetchTabData(activeTabId, 0)
       }
     },
-    [activeTabId, setTabSort, fetchTabData]
+    [activeTabId, isQueryResultTab, setTabSort, fetchTabData]
   )
 
   const handleCellSelect = useCallback(
     (cell: SelectedCell) => {
-      if (!activeTabId) return
+      if (!activeTabId || isQueryConsoleTab) return
       onOpenDetail(activeTabId, cell)
     },
-    [activeTabId, onOpenDetail]
+    [activeTabId, isQueryConsoleTab, onOpenDetail]
   )
 
   return (
     <box flexGrow={1} flexDirection="column" border borderStyle="rounded" borderColor={borderColor}>
-      {/* Tab bar */}
       <box height={1} paddingX={1} flexDirection="row" gap={0}>
         {tabs.length === 0 ? (
           <text fg="#565f89">No tabs open</text>
         ) : (
           tabs.map((tab) => {
             const isActive = tab.id === activeTabId
-            
-            // Get connection info for this tab
-            const connection = state.connections.find(c => c.config.id === tab.connectionId)
+            const connection = state.connections.find((c) => c.config.id === tab.connectionId)
             const dbTypeIcon = connection ? DB_TYPE_ICONS[connection.config.type] : ""
             const iconColor = connection ? DB_TYPE_COLORS[connection.config.type] : "#7aa2f7"
             const connectionName = connection?.config.name || ""
-            
-            // Format: {icon} {collection} [{connection}]
             const maxLabelLen = 24
-            const collectionLabel = tab.label.length > maxLabelLen
-              ? tab.label.slice(0, maxLabelLen - 2) + "…"
-              : tab.label
-            
+            const label = tab.label.length > maxLabelLen ? tab.label.slice(0, maxLabelLen - 2) + "…" : tab.label
+
             if (isActive) {
               return (
                 <text key={tab.id} bg="#292e42">
                   <span fg="#7aa2f7">▎</span>
                   <span fg={iconColor}>{dbTypeIcon}</span>
-                  <span fg="#c0caf5"> {collectionLabel} </span>
+                  <span fg="#c0caf5"> {label} </span>
                   <span fg="#565f89">[{connectionName}]</span>
                   <span fg="#414868">▕</span>
                 </text>
               )
             }
+
             return (
               <text key={tab.id}>
                 <span fg="#292e42">▎</span>
-                <span fg="#565f89">{dbTypeIcon} {collectionLabel} [{connectionName}]</span>
+                <span fg="#565f89">
+                  {dbTypeIcon} {label} [{connectionName}]
+                </span>
                 <span fg="#292e42">▕</span>
               </text>
             )
@@ -176,18 +252,23 @@ export function MainPanel({ focused, sidebarWidth, detailWidth, onOpenDetail }: 
         )}
       </box>
 
-      {/* Separator */}
       <box height={1} paddingX={0}>
         <text fg="#414868">{"─".repeat(200)}</text>
       </box>
 
-      {/* Content area */}
       {activeTab ? (
-        activeData?.loading ? (
+        isQueryConsoleTab ? (
+          <QueryConsole
+            focused={focused && queryInputFocused}
+            query={activeData?.filter || ""}
+            error={activeData?.error}
+            onChange={(next) => setTabFilter(activeTab.id, next)}
+            onExecute={handleFilterExecute}
+            onBlur={() => setQueryInputFocused(false)}
+          />
+        ) : activeData?.loading ? (
           <box flexGrow={1} flexDirection="column" justifyContent="center" alignItems="center">
-            <text fg="#e0af68">
-              Loading {activeTab.database}.{activeTab.collection}...
-            </text>
+            <text fg="#e0af68">Loading {activeTab.database}.{activeTab.collection}...</text>
             <text fg="#565f89">Please wait while query executes</text>
           </box>
         ) : activeData?.error ? (
@@ -196,32 +277,29 @@ export function MainPanel({ focused, sidebarWidth, detailWidth, onOpenDetail }: 
             <text fg="#565f89">
               Press <span fg="#7aa2f7">r</span> to retry
             </text>
-            <text fg="#565f89">
-              Press <span fg="#7aa2f7">f</span> to refine query
-            </text>
           </box>
         ) : activeData?.result ? (
           <box flexGrow={1} flexDirection="column">
-            {/* FilterBar */}
-            <FilterBar
-              focused={filterBarFocused}
-              dbType={dbType}
-              currentFilter={activeData.filter || ""}
-              currentSort={activeData.sort}
-              onSortChange={handleSortChange}
-              onExecute={handleFilterExecute}
-              onClear={handleFilterClear}
-              onUnfocus={() => setFilterBarFocused(false)}
-            />
-            {/* DataTable */}
+            {!isQueryResultTab && (
+              <FilterBar
+                focused={filterBarFocused}
+                dbType={dbType}
+                currentFilter={activeData.filter || ""}
+                currentSort={activeData.sort}
+                onSortChange={handleSortChange}
+                onExecute={handleFilterExecute}
+                onClear={handleFilterClear}
+                onUnfocus={() => setFilterBarFocused(false)}
+              />
+            )}
             <DataTable
               result={activeData.result}
               focused={focused && !filterBarFocused}
               currentOffset={activeData.currentOffset}
               pageSize={activeData.pageSize}
               currentSort={activeData.sort}
-              onPageChange={handlePageChange}
-              onColumnSort={handleColumnSort}
+              onPageChange={isQueryResultTab ? undefined : handlePageChange}
+              onColumnSort={isQueryResultTab ? undefined : handleColumnSort}
               onCellSelect={handleCellSelect}
               sidebarWidth={sidebarWidth}
               detailWidth={detailWidth}

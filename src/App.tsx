@@ -13,6 +13,7 @@ import { DatabasePicker } from "./components/sidebar/DatabasePicker.tsx"
 import { useApp } from "./state/AppContext.tsx"
 import { Toast } from "./components/layout/Toast.tsx"
 import { CommandPalette, type CommandItem } from "./components/layout/CommandPalette.tsx"
+import { QueryDatabasePicker, type QueryDatabaseOption } from "./components/layout/QueryDatabasePicker.tsx"
 
 export type FocusZone = "sidebar" | "main" | "detail" | "querylog"
 
@@ -28,7 +29,7 @@ interface DetailState {
 export function App() {
   const renderer = useRenderer()
   const { width, height } = useTerminalDimensions()
-  const { state, addConnection, updateTabCell } = useApp()
+  const { state, addConnection, updateTabCell, openQueryConsole } = useApp()
   const [focusZone, setFocusZone] = useState<FocusZone>("sidebar")
   const [showQueryLog, setShowQueryLog] = useState(true)
   const [detailState, setDetailState] = useState<DetailState | null>(null)
@@ -39,6 +40,31 @@ export function App() {
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [recentCommands, setRecentCommands] = useState<string[]>([])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [showQueryDatabasePicker, setShowQueryDatabasePicker] = useState(false)
+
+  const queryDatabaseOptions = useMemo<QueryDatabaseOption[]>(() => {
+    const options: QueryDatabaseOption[] = []
+
+    for (const conn of state.connections) {
+      if (conn.status !== "connected") continue
+
+      const allDatabases = state.allDatabases.get(conn.config.id) ?? []
+      const visibleDatabases = state.visibleDatabases.get(conn.config.id) ?? []
+      const fallback = conn.config.type === "redis" ? ["0"] : conn.config.database ? [conn.config.database] : []
+      const databases = (visibleDatabases.length > 0 ? visibleDatabases : allDatabases.length > 0 ? allDatabases : fallback).filter(Boolean)
+
+      for (const database of databases) {
+        options.push({
+          key: `${conn.config.id}/${database}`,
+          connectionId: conn.config.id,
+          connectionName: conn.config.name,
+          database,
+        })
+      }
+    }
+
+    return options
+  }, [state.connections, state.allDatabases, state.visibleDatabases])
 
   const isNarrow = width < 100
   const showDetail = detailState !== null
@@ -54,6 +80,21 @@ export function App() {
 
   const commandItems = useMemo<CommandItem[]>(() => {
     const base: CommandItem[] = [
+      {
+        id: "query-database",
+        title: "Query Database",
+        shortcut: "Ctrl+K",
+        run: () =>
+          runCommand("query-database", () => {
+            const hasConnectedConnection = state.connections.some((conn) => conn.status === "connected")
+            if (!hasConnectedConnection) {
+              showToast("Connect to a database first")
+              return
+            }
+
+            setShowQueryDatabasePicker(true)
+          }),
+      },
       {
         id: "new-connection",
         title: "Add new connection",
@@ -127,7 +168,17 @@ export function App() {
       const rb = rank.has(b.id) ? rank.get(b.id)! : 999
       return ra - rb
     })
-  }, [runCommand, showQueryLog, showDetail, detailState, renderer, recentCommands, sidebarCollapsed])
+  }, [
+    runCommand,
+    showQueryLog,
+    showDetail,
+    detailState,
+    renderer,
+    recentCommands,
+    sidebarCollapsed,
+    state.connections,
+    showToast,
+  ])
 
   // Auto-copy selected text to clipboard when mouse selection finishes
   useEffect(() => {
@@ -168,7 +219,7 @@ export function App() {
     if (showCommandPalette) return
 
     // Block all other keys when modal is open
-    if (showConnectionForm || databasePickerConnectionId || searchDialogDb) return
+    if (showConnectionForm || databasePickerConnectionId || searchDialogDb || showQueryDatabasePicker) return
 
     if (key.name === "`") {
       setShowQueryLog((v) => !v)
@@ -201,7 +252,7 @@ export function App() {
   const queryLogHeight = showQueryLog ? 8 : 0
   const statusBarHeight = 1
   const bottomMarginHeight = 1
-  const hasModalOpen = showConnectionForm || !!databasePickerConnectionId || !!searchDialogDb || showCommandPalette
+  const hasModalOpen = showConnectionForm || !!databasePickerConnectionId || !!searchDialogDb || showCommandPalette || showQueryDatabasePicker
   const topAreaHeight = Math.max(6, height - queryLogHeight - statusBarHeight - bottomMarginHeight)
 
   // Center the connection form modal
@@ -236,6 +287,7 @@ export function App() {
           focused={focusZone === "main" && !hasModalOpen}
           sidebarWidth={sidebarWidth}
           detailWidth={detailWidth}
+          onShowToast={showToast}
           onOpenDetail={(tabId, cell) => {
             const tab = state.tabs.find((t) => t.id === tabId)
             const conn = tab ? state.connections.find((c) => c.config.id === tab.connectionId) : undefined
@@ -378,6 +430,19 @@ export function App() {
         height={height}
         commands={commandItems}
         onClose={() => setShowCommandPalette(false)}
+      />
+
+      <QueryDatabasePicker
+        visible={showQueryDatabasePicker}
+        width={width}
+        height={height}
+        options={queryDatabaseOptions}
+        onSelect={(option) => {
+          openQueryConsole(option.connectionId, option.database)
+          setShowQueryDatabasePicker(false)
+          setFocusZone("main")
+        }}
+        onClose={() => setShowQueryDatabasePicker(false)}
       />
     </box>
   )
