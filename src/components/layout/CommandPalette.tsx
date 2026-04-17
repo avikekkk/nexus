@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useKeyboard } from "@opentui/react"
 import { fuzzyScore } from "../../utils/fuzzy.ts"
-import { deleteWordBackward, getPrintableKey, isDeleteWordKey, isSubmitKey } from "../../utils/keyInput.ts"
+import { deleteWordBackward, getTextInput, isDeleteWordKey, isSubmitKey, normalizeTextInput } from "../../utils/keyInput.ts"
+import { subscribePaste } from "../../state/paste.ts"
 
 export interface CommandItem {
   id: string
@@ -97,14 +98,36 @@ export function CommandPalette({ visible, width, height, commands, onClose }: Co
       return
     }
 
-    const printable = getPrintableKey(key)
-    if (printable) {
-      setQuery((prev) => prev.slice(0, cursorPos) + printable + prev.slice(cursorPos))
-      setCursorPos((prev) => prev + printable.length)
+    const inputText = getTextInput(key)
+    if (inputText) {
+      setQuery((prev) => prev.slice(0, cursorPos) + inputText + prev.slice(cursorPos))
+      setCursorPos((prev) => prev + inputText.length)
       setSelected(0)
       return
     }
   })
+
+  const applyPastedText = useCallback(
+    (rawText: string) => {
+      if (!visible) return
+
+      const pasted = normalizeTextInput(rawText)
+      if (!pasted) return
+
+      setQuery((prev) => prev.slice(0, cursorPos) + pasted + prev.slice(cursorPos))
+      setCursorPos((prev) => prev + pasted.length)
+      setSelected(0)
+    },
+    [visible, cursorPos]
+  )
+
+  useEffect(() => subscribePaste(applyPastedText), [applyPastedText])
+
+  const handlePaste = (event: { text: string; preventDefault?: () => void; stopPropagation?: () => void }) => {
+    applyPastedText(event.text)
+    event.preventDefault?.()
+    event.stopPropagation?.()
+  }
 
   if (!visible) return null
 
@@ -120,6 +143,7 @@ export function CommandPalette({ visible, width, height, commands, onClose }: Co
         position="absolute"
         left={left}
         top={top}
+        onPaste={handlePaste}
         width={panelWidth}
         height={panelHeight}
         border

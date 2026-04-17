@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useKeyboard } from "@opentui/react"
-import { getPrintableKey, isSubmitKey } from "../../utils/keyInput.ts"
+import { getTextInput, isSubmitKey, normalizeTextInput } from "../../utils/keyInput.ts"
+import { subscribePaste } from "../../state/paste.ts"
 
 export interface QueryDatabaseOption {
   key: string
@@ -80,12 +81,33 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
       return
     }
 
-    const printable = getPrintableKey(key)
-    if (printable) {
-      setQuery((prev) => prev + printable)
+    const inputText = getTextInput(key)
+    if (inputText) {
+      setQuery((prev) => prev + inputText)
       setSelected(0)
     }
   })
+
+  const applyPastedText = useCallback(
+    (rawText: string) => {
+      if (!visible || !searchMode) return
+
+      const pasted = normalizeTextInput(rawText)
+      if (!pasted) return
+
+      setQuery((prev) => prev + pasted)
+      setSelected(0)
+    },
+    [visible, searchMode]
+  )
+
+  useEffect(() => subscribePaste(applyPastedText), [applyPastedText])
+
+  const handlePaste = (event: { text: string; preventDefault?: () => void; stopPropagation?: () => void }) => {
+    applyPastedText(event.text)
+    event.preventDefault?.()
+    event.stopPropagation?.()
+  }
 
   if (!visible) return null
 
@@ -101,6 +123,7 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
         position="absolute"
         left={left}
         top={top}
+        onPaste={handlePaste}
         width={panelWidth}
         height={panelHeight}
         border

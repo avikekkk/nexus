@@ -3,7 +3,8 @@ import { useKeyboard } from "@opentui/react"
 import type { MouseEvent as TuiMouseEvent, ScrollBoxRenderable } from "@opentui/core"
 import type { DbType } from "../../db/types.ts"
 import { formatBytes, stringifyValue, parseEditedValue, getTypeName } from "../../utils/detailValue.ts"
-import { deleteWordBackward, getPrintableKey, isDeleteWordKey, isInsertNewlineKey } from "../../utils/keyInput.ts"
+import { deleteWordBackward, getTextInput, isDeleteWordKey, isInsertNewlineKey, normalizeTextInput } from "../../utils/keyInput.ts"
+import { subscribePaste } from "../../state/paste.ts"
 
 interface DetailPanelProps {
   width: number
@@ -310,13 +311,13 @@ export function DetailPanel({
       return
     }
 
-    const printable = getPrintableKey(key)
-    if (printable) {
+    const inputText = getTextInput(key, { allowNewline: true })
+    if (inputText) {
       const before = value.slice(0, cursorPos)
       const after = value.slice(cursorPos)
       preferredColumnRef.current = null
-      setValue(before + printable + after)
-      setCursorPos(cursorPos + 1)
+      setValue(before + inputText + after)
+      setCursorPos(cursorPos + inputText.length)
       setConfirmClose(false)
     }
   })
@@ -329,6 +330,34 @@ export function DetailPanel({
       if (event.scroll.direction === "down") scrollBy(delta)
     },
     [focused, scrollBy]
+  )
+
+  const applyPastedText = useCallback(
+    (rawText: string) => {
+      if (!focused) return
+
+      const pasted = normalizeTextInput(rawText, { allowNewline: true })
+      if (!pasted) return
+
+      const before = value.slice(0, cursorPos)
+      const after = value.slice(cursorPos)
+      preferredColumnRef.current = null
+      setValue(before + pasted + after)
+      setCursorPos(cursorPos + pasted.length)
+      setConfirmClose(false)
+    },
+    [focused, value, cursorPos]
+  )
+
+  useEffect(() => subscribePaste(applyPastedText), [applyPastedText])
+
+  const handlePaste = useCallback(
+    (event: { text: string; preventDefault?: () => void; stopPropagation?: () => void }) => {
+      applyPastedText(event.text)
+      event.preventDefault?.()
+      event.stopPropagation?.()
+    },
+    [applyPastedText]
   )
 
   const rowPreview = useMemo(() => {
@@ -345,6 +374,7 @@ export function DetailPanel({
       height={height}
       flexDirection="column"
       border
+      onPaste={handlePaste}
       borderStyle="rounded"
       borderColor={borderColor}
       title=" Detail "

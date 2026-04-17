@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useKeyboard } from "@opentui/react"
-import { deleteWordBackward, getPrintableKey, isDeleteWordKey, isInsertNewlineKey, isSubmitKey } from "../../utils/keyInput.ts"
+import { deleteWordBackward, getTextInput, isDeleteWordKey, isInsertNewlineKey, isSubmitKey, normalizeTextInput } from "../../utils/keyInput.ts"
+import { subscribePaste } from "../../state/paste.ts"
 import { CompletionMenu } from "../common/CompletionMenu.tsx"
 import { getCompletions } from "../../query/completion/engine.ts"
 import { deleteWithAutoPair, insertWithAutoPair } from "../../query/editor/autoPair.ts"
@@ -15,6 +16,7 @@ interface QueryConsoleProps {
   database: string
   schemaDatabases: string[]
   schemaCollections: string[]
+  schemaCollectionFields: Record<string, string[]>
   onChange: (query: string) => void
   onExecute: (query: string) => void
   onBlur: () => void
@@ -38,6 +40,7 @@ export function QueryConsole({
   database,
   schemaDatabases,
   schemaCollections,
+  schemaCollectionFields,
   onChange,
   onExecute,
   onBlur,
@@ -78,6 +81,7 @@ export function QueryConsole({
         schema: {
           databases: schemaDatabases,
           collections: schemaCollections,
+          collectionFields: schemaCollectionFields,
         },
       })
 
@@ -93,7 +97,7 @@ export function QueryConsole({
         setCompletionIndex(0)
       }
     },
-    [dbType, database, schemaDatabases, schemaCollections, closeCompletion]
+    [dbType, database, schemaDatabases, schemaCollections, schemaCollectionFields, closeCompletion]
   )
 
   const applyCompletion = useCallback(
@@ -122,7 +126,21 @@ export function QueryConsole({
       return
     }
 
-    if (hasCompletion && (key.name === "tab" || (isSubmitKey(key) && !isInsertNewlineKey(key)))) {
+    if (key.name === "tab") {
+      if (hasCompletion) {
+        const selected = completion?.items[completionIndex]
+        if (selected) {
+          applyCompletion(selected)
+        }
+      } else {
+        const next = `${query.slice(0, cursorPos)}  ${query.slice(cursorPos)}`
+        updateQuery(next, cursorPos + 2)
+        refreshCompletion(next, cursorPos + 2)
+      }
+      return
+    }
+
+    if (hasCompletion && isSubmitKey(key) && !isInsertNewlineKey(key)) {
       const selected = completion?.items[completionIndex]
       if (selected) {
         applyCompletion(selected)
@@ -200,16 +218,50 @@ export function QueryConsole({
       return
     }
 
-    const printable = getPrintableKey(key)
-    if (printable) {
-      const paired = insertWithAutoPair(query, cursorPos, printable)
+    const inputText = getTextInput(key, { allowNewline: true })
+    if (inputText) {
+      if (inputText.length > 1) {
+        const nextValue = `${query.slice(0, cursorPos)}${inputText}${query.slice(cursorPos)}`
+        const nextCursor = cursorPos + inputText.length
+        updateQuery(nextValue, nextCursor)
+        refreshCompletion(nextValue, nextCursor)
+        return
+      }
+
+      const paired = insertWithAutoPair(query, cursorPos, inputText)
       updateQuery(paired.value, paired.cursor)
       refreshCompletion(paired.value, paired.cursor)
     }
   })
 
+  const applyPastedText = useCallback(
+    (rawText: string) => {
+      if (!focused) return
+
+      const pasted = normalizeTextInput(rawText, { allowNewline: true })
+      if (!pasted) return
+
+      const next = `${query.slice(0, cursorPos)}${pasted}${query.slice(cursorPos)}`
+      const nextCursor = cursorPos + pasted.length
+      updateQuery(next, nextCursor)
+      refreshCompletion(next, nextCursor)
+    },
+    [focused, query, cursorPos, updateQuery, refreshCompletion]
+  )
+
+  useEffect(() => subscribePaste(applyPastedText), [applyPastedText])
+
+  const handlePaste = useCallback(
+    (event: { text: string; preventDefault?: () => void; stopPropagation?: () => void }) => {
+      applyPastedText(event.text)
+      event.preventDefault?.()
+      event.stopPropagation?.()
+    },
+    [applyPastedText]
+  )
+
   return (
-    <box flexGrow={1} flexDirection="column" padding={1}>
+    <box flexGrow={1} flexDirection="column" padding={1} onPaste={handlePaste}>
       <text fg="#565f89">Enter run • Ctrl+Enter newline • Esc exit input</text>
       <box height={1}>
         <text fg="#414868">{"─".repeat(200)}</text>

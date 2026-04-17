@@ -1,5 +1,16 @@
-import { fuzzyScore } from "../../../utils/fuzzy.ts"
+import { rankCompletionSuggestions } from "../ranking.ts"
 import type { CompletionContext, CompletionProvider, CompletionSuggestion } from "../types.ts"
+
+interface TokenBounds {
+  start: number
+  end: number
+  token: string
+}
+
+interface SqlTableRef {
+  table: string
+  alias: string
+}
 
 const SQL_KEYWORDS: CompletionSuggestion[] = [
   "SELECT",
@@ -12,6 +23,11 @@ const SQL_KEYWORDS: CompletionSuggestion[] = [
   "LEFT JOIN",
   "RIGHT JOIN",
   "INNER JOIN",
+  "AND",
+  "OR",
+  "IN",
+  "LIKE",
+  "IS NULL",
   "COUNT(*)",
   "DISTINCT",
 ].map((keyword) => ({
@@ -43,14 +59,14 @@ const SQL_SNIPPETS: CompletionSuggestion[] = [
   },
 ]
 
-function getTokenBounds(query: string, cursor: number): { start: number; end: number; token: string } {
+function getTokenBounds(query: string, cursor: number): TokenBounds {
   let start = cursor
-  while (start > 0 && /[A-Za-z0-9_]/.test(query[start - 1] ?? "")) {
+  while (start > 0 && /[A-Za-z0-9_.]/.test(query[start - 1] ?? "")) {
     start -= 1
   }
 
   let end = cursor
-  while (end < query.length && /[A-Za-z0-9_]/.test(query[end] ?? "")) {
+  while (end < query.length && /[A-Za-z0-9_.]/.test(query[end] ?? "")) {
     end += 1
   }
 
@@ -61,20 +77,87 @@ function getTokenBounds(query: string, cursor: number): { start: number; end: nu
   }
 }
 
-function rankSuggestions(items: CompletionSuggestion[], query: string): CompletionSuggestion[] {
-  const scored = items
-    .map((item) => ({ item, score: fuzzyScore(query, item.label) }))
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score)
+function parseTableRefs(sql: string): SqlTableRef[] {
+  const refs: SqlTableRef[] = []
+  const pattern = /\b(?:from|join)\s+`?([A-Za-z0-9_]+)`?(?:\s+(?:as\s+)?([A-Za-z0-9_]+))?/gi
+  const reserved = new Set(["where", "group", "order", "limit", "join", "left", "right", "inner", "on"])
 
-  return scored.map((entry) => entry.item)
+  let match = pattern.exec(sql)
+  while (match) {
+    const table = match[1] ?? ""
+    if (table) {
+      const candidateAlias = match[2]?.toLowerCase()
+      const alias = candidateAlias && !reserved.has(candidateAlias) ? match[2]! : table
+      refs.push({ table, alias })
+    }
+    match = pattern.exec(sql)
+  }
+
+  return refs
+}
+
+function normalizeColumns(columns: string[]): string[] {
+  return Array.from(new Set(columns.filter((column) => column.trim().length > 0)))
+}
+
+function collectColumnSuggestions(
+  tableRefs: SqlTableRef[],
+  fieldMap: Record<string, string[]>,
+  qualifier?: string
+): CompletionSuggestion[] {
+  const items: CompletionSuggestion[] = []
+
+  if (qualifier) {
+    const ref = tableRefs.find((entry) => entry.alias === qualifier || entry.table === qualifier)
+    if (!ref) return []
+
+    const columns = normalizeColumns(fieldMap[ref.table] ?? [])
+    return columns.map((column) => ({
+      id: `mysql-column-${ref.table}-${column}`,
+      label: column,
+      kind: "field",
+      insertText: column,
+      detail: `${ref.table}.${column}`,
+    }))
+  }
+
+  for (const ref of tableRefs) {
+    const columns = normalizeColumns(fieldMap[ref.table] ?? [])
+    for (const column of columns) {
+      items.push({
+        id: `mysql-column-${ref.table}-${column}`,
+        label: ref.alias === ref.table ? column : `${ref.alias}.${column}`,
+        kind: "field",
+        insertText: ref.alias === ref.table ? column : `${ref.alias}.${column}`,
+        detail: `${ref.table}.${column}`,
+      })
+    }
+  }
+
+  return items
+}
+
+function isWhereContext(beforeCursor: string): boolean {
+  const lc = beforeCursor.toLowerCase()
+  const whereIndex = lc.lastIndexOf(" where ")
+  if (whereIndex < 0) return false
+
+  const blockers = [" group by ", " order by ", " limit ", " having "]
+  const blocked = blockers.some((token) => lc.lastIndexOf(token) > whereIndex)
+  return !blocked
 }
 
 export const mysqlCompletionProvider: CompletionProvider = {
   getCompletions(context: CompletionContext) {
     const bounds = getTokenBounds(context.query, context.cursor)
-    const beforeCursor = context.query.slice(0, context.cursor).toLowerCase()
-    const expectTableName = /(from|join|into|update|table)\s+[a-z0-9_]*$/i.test(beforeCursor)
+    const beforeCursor = context.query.slice(0, context.cursor)
+    const beforeCursorLower = beforeCursor.toLowerCase()
+    const tableRefs = parseTableRefs(beforeCursor)
+
+    const expectTableName = /(?:from|join|into|update|table)\s+`?[a-z0-9_]*$/i.test(beforeCursorLower)
+    const qualifierMatch = beforeCursor.match(/([A-Za-z0-9_]+)\.([A-Za-z0-9_]*)$/)
+    const qualifier = qualifierMatch?.[1]
+    const isWhere = isWhereContext(beforeCursorLower)
 
     const tableSuggestions: CompletionSuggestion[] = context.schema.collections.map((name) => ({
       id: `mysql-table-${name}`,
@@ -84,19 +167,28 @@ export const mysqlCompletionProvider: CompletionProvider = {
       detail: `Table in ${context.database}`,
     }))
 
+    const columnSuggestions = collectColumnSuggestions(tableRefs, context.schema.collectionFields, qualifier)
     const snippetSuggestions = context.query.trim() === "" ? SQL_SNIPPETS : []
 
-    const base = expectTableName
+    const base: CompletionSuggestion[] = expectTableName
       ? [...tableSuggestions, ...SQL_KEYWORDS]
-      : [...SQL_KEYWORDS, ...tableSuggestions, ...snippetSuggestions]
+      : qualifier
+        ? [...columnSuggestions]
+        : isWhere
+          ? [...columnSuggestions, ...SQL_KEYWORDS, ...tableSuggestions]
+          : [...SQL_KEYWORDS, ...columnSuggestions, ...tableSuggestions, ...snippetSuggestions]
 
-    const items = rankSuggestions(base, bounds.token)
+    const searchToken = qualifierMatch ? (qualifierMatch[2] ?? "") : bounds.token
+    const items = rankCompletionSuggestions(base, searchToken)
     if (items.length === 0) return null
+
+    const replaceStart = qualifierMatch ? context.cursor - searchToken.length : bounds.start
+    const replaceEnd = qualifierMatch ? context.cursor : bounds.end
 
     return {
       items,
-      replaceStart: bounds.start,
-      replaceEnd: bounds.end,
+      replaceStart,
+      replaceEnd,
     }
   },
 }

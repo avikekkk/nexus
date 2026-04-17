@@ -1,11 +1,12 @@
-import { fuzzyScore } from "../../../utils/fuzzy.ts"
+import { rankCompletionSuggestions } from "../ranking.ts"
 import type { CompletionContext, CompletionProvider, CompletionResult, CompletionSuggestion } from "../types.ts"
 
 interface ParsedContext {
-  mode: "collections" | "rootOperations" | "chainOperations"
+  mode: "collections" | "rootOperations" | "chainOperations" | "filterFields"
   token: string
   replaceStart: number
   replaceEnd: number
+  collection?: string
 }
 
 const ROOT_OPERATIONS: CompletionSuggestion[] = [
@@ -70,8 +71,149 @@ const CHAIN_OPERATIONS: CompletionSuggestion[] = [
   },
 ]
 
+interface KeyToken {
+  token: string
+  replaceStartOffset: number
+  replaceEndOffset: number
+}
+
+function extractMongoKeyToken(input: string): KeyToken | null {
+  let depth = 1
+  let inString: "'" | '"' | null = null
+  let escaped = false
+  let segmentStart = 0
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i]!
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === inString) {
+        inString = null
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'") {
+      inString = char
+      continue
+    }
+
+    if (char === "{") {
+      depth += 1
+      continue
+    }
+
+    if (char === "}") {
+      depth -= 1
+      if (depth < 1) return null
+      continue
+    }
+
+    if (depth === 0 && char === ",") {
+      segmentStart = i + 1
+      continue
+    }
+  }
+
+  if (depth < 1) {
+    return null
+  }
+
+  const segment = input.slice(segmentStart)
+  let keyDepth = 0
+  inString = null
+  escaped = false
+  let hasTopLevelColon = false
+
+  for (let i = 0; i < segment.length; i++) {
+    const char = segment[i]!
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === inString) {
+        inString = null
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'") {
+      inString = char
+      continue
+    }
+
+    if (char === "{" || char === "[") {
+      keyDepth += 1
+      continue
+    }
+
+    if (char === "}" || char === "]") {
+      keyDepth -= 1
+      continue
+    }
+
+    if (char === ":" && keyDepth === 0) {
+      hasTopLevelColon = true
+      break
+    }
+  }
+
+  if (hasTopLevelColon) {
+    return null
+  }
+
+  const segmentLeadingSpace = segment.match(/^\s*/)?.[0].length ?? 0
+  const candidate = segment.slice(segmentLeadingSpace)
+  const quoted = candidate.match(/^["']([A-Za-z0-9_$.]*)$/)
+  if (quoted) {
+    const token = quoted[1] ?? ""
+    const replaceStartOffset = segmentStart + segmentLeadingSpace + 1
+    return {
+      token,
+      replaceStartOffset,
+      replaceEndOffset: segmentStart + segment.length,
+    }
+  }
+
+  const bare = candidate.match(/^([A-Za-z0-9_$.]*)$/)
+  if (!bare) {
+    return null
+  }
+
+  const token = bare[1] ?? ""
+  const replaceStartOffset = segmentStart + segmentLeadingSpace
+  return {
+    token,
+    replaceStartOffset,
+    replaceEndOffset: segmentStart + segment.length,
+  }
+}
+
 function parseMongoCompletionContext(query: string, cursor: number): ParsedContext | null {
   const beforeCursor = query.slice(0, cursor)
+
+  const filterCall = /db\.([A-Za-z0-9_$]+)\.(find|findOne|countDocuments)\s*\(\s*\{([\s\S]*)$/i.exec(beforeCursor)
+  if (filterCall) {
+    const collection = filterCall[1] ?? ""
+    const filterBody = filterCall[3] ?? ""
+    const keyToken = extractMongoKeyToken(filterBody)
+    if (keyToken) {
+      const filterBodyStart = cursor - filterBody.length
+      return {
+        mode: "filterFields",
+        token: keyToken.token,
+        replaceStart: filterBodyStart + keyToken.replaceStartOffset,
+        replaceEnd: filterBodyStart + keyToken.replaceEndOffset,
+        collection,
+      }
+    }
+  }
 
   const collectionsMatch = beforeCursor.match(/db\.([A-Za-z0-9_$]*)$/)
   if (collectionsMatch) {
@@ -99,7 +241,7 @@ function parseMongoCompletionContext(query: string, cursor: number): ParsedConte
     }
   }
 
-  if (/^db\.[A-Za-z0-9_$]+\.find\(/.test(expression)) {
+  if (/^db\.[A-Za-z0-9_$]+\.(find|findOne)\(/.test(expression)) {
     return {
       mode: "chainOperations",
       token,
@@ -111,19 +253,37 @@ function parseMongoCompletionContext(query: string, cursor: number): ParsedConte
   return null
 }
 
-function rankSuggestions(items: CompletionSuggestion[], token: string): CompletionSuggestion[] {
-  const scored = items
-    .map((item) => ({ item, score: fuzzyScore(token, item.label) }))
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score)
-
-  return scored.map((entry) => entry.item)
+function unique(items: string[]): string[] {
+  return Array.from(new Set(items.filter((item) => item.trim().length > 0)))
 }
 
 export const mongoCompletionProvider: CompletionProvider = {
   getCompletions(context: CompletionContext): CompletionResult | null {
     const parsed = parseMongoCompletionContext(context.query, context.cursor)
     if (!parsed) return null
+
+    if (parsed.mode === "filterFields") {
+      const collectionFields = parsed.collection ? context.schema.collectionFields[parsed.collection] ?? [] : []
+      const fieldNames = unique(["_id", ...collectionFields])
+      const items = rankCompletionSuggestions(
+        fieldNames.map((field) => ({
+          id: `mongo-field-${parsed.collection ?? "any"}-${field}`,
+          label: field,
+          kind: "field",
+          insertText: field,
+          detail: parsed.collection ? `${parsed.collection} field` : "Document field",
+        })),
+        parsed.token
+      )
+
+      if (items.length === 0) return null
+
+      return {
+        items,
+        replaceStart: parsed.replaceStart,
+        replaceEnd: parsed.replaceEnd,
+      }
+    }
 
     if (parsed.mode === "collections") {
       const collectionSuggestions: CompletionSuggestion[] = context.schema.collections.map((name) => ({
@@ -143,7 +303,7 @@ export const mongoCompletionProvider: CompletionProvider = {
       }))
 
       return {
-        items: rankSuggestions([...collectionSuggestions, ...siblingDatabaseSuggestions], parsed.token),
+        items: rankCompletionSuggestions([...collectionSuggestions, ...siblingDatabaseSuggestions], parsed.token),
         replaceStart: parsed.replaceStart,
         replaceEnd: parsed.replaceEnd,
       }
@@ -151,7 +311,7 @@ export const mongoCompletionProvider: CompletionProvider = {
 
     const items = parsed.mode === "chainOperations" ? CHAIN_OPERATIONS : ROOT_OPERATIONS
     return {
-      items: rankSuggestions(items, parsed.token),
+      items: rankCompletionSuggestions(items, parsed.token),
       replaceStart: parsed.replaceStart,
       replaceEnd: parsed.replaceEnd,
     }

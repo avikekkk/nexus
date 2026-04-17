@@ -10,6 +10,7 @@ interface CompletionMenuProps {
 const KIND_COLORS = {
   database: "#e0af68",
   collection: "#9ece6a",
+  field: "#73daca",
   operation: "#7aa2f7",
   snippet: "#bb9af7",
 } as const

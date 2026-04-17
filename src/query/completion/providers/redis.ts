@@ -1,4 +1,4 @@
-import { fuzzyScore } from "../../../utils/fuzzy.ts"
+import { rankCompletionSuggestions } from "../ranking.ts"
 import type { CompletionContext, CompletionProvider, CompletionSuggestion } from "../types.ts"
 
 const REDIS_PATTERN_SNIPPETS: CompletionSuggestion[] = [
@@ -37,15 +37,6 @@ function getTokenBounds(query: string, cursor: number): { start: number; end: nu
   }
 }
 
-function rankSuggestions(items: CompletionSuggestion[], query: string): CompletionSuggestion[] {
-  const scored = items
-    .map((item) => ({ item, score: fuzzyScore(query, item.label) }))
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score)
-
-  return scored.map((entry) => entry.item)
-}
-
 export const redisCompletionProvider: CompletionProvider = {
   getCompletions(context: CompletionContext) {
     const bounds = getTokenBounds(context.query, context.cursor)
@@ -59,7 +50,7 @@ export const redisCompletionProvider: CompletionProvider = {
     }))
 
     const base = [...REDIS_PATTERN_SNIPPETS, ...keySuggestions]
-    const items = rankSuggestions(base, bounds.token)
+    const items = rankCompletionSuggestions(base, bounds.token)
     if (items.length === 0) return null
 
     return {

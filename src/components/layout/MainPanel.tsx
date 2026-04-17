@@ -52,6 +52,25 @@ export function MainPanel({
     return treeCollections.map((item) => item.label)
   }, [activeTab, state.treeChildren])
 
+  const schemaCollectionFields = useMemo(() => {
+    if (!activeTab) return {}
+
+    const fields: Record<string, string[]> = {}
+    for (const tab of tabs) {
+      if (tab.connectionId !== activeTab.connectionId || tab.database !== activeTab.database || tab.kind !== "collection") {
+        continue
+      }
+
+      const columns = tabData.get(tab.id)?.result?.columns.map((column) => column.name) ?? []
+      if (columns.length === 0) continue
+
+      const existing = fields[tab.collection] ?? []
+      fields[tab.collection] = Array.from(new Set([...existing, ...columns]))
+    }
+
+    return fields
+  }, [activeTab, tabs, tabData])
+
   useEffect(() => {
     if (activeTabId && !fetchedTabs.current.has(activeTabId)) {
       const tab = tabs.find((t) => t.id === activeTabId)
@@ -340,6 +359,7 @@ export function MainPanel({
             database={activeTab.database}
             schemaDatabases={schemaDatabases}
             schemaCollections={querySchemaCollections}
+            schemaCollectionFields={schemaCollectionFields}
             onChange={(next) => setTabFilter(activeTab.id, next)}
             onExecute={handleFilterExecute}
             onBlur={() => setQueryInputFocused(false)}

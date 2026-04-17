@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from "react"
 import { useKeyboard } from "@opentui/react"
 import type { DbType } from "../../db/types.ts"
 import { parseMongoFilter, parseMySQLQuery, validateRedisPattern } from "../../utils/queryParser.ts"
-import { deleteWordBackward, getPrintableKey, isDeleteWordKey, isSubmitKey } from "../../utils/keyInput.ts"
+import { deleteWordBackward, getTextInput, isDeleteWordKey, isSubmitKey, normalizeTextInput } from "../../utils/keyInput.ts"
+import { subscribePaste } from "../../state/paste.ts"
 
 interface FilterBarProps {
   focused: boolean
@@ -272,9 +273,18 @@ export function FilterBar({
       setFilterInput(result.value)
       setCursorPos(result.cursor)
     } else {
-      const printable = getPrintableKey(key)
-      if (!printable) return
-      const result = getCompletedInput(filterInput, cursorPos, printable)
+      const inputText = getTextInput(key)
+      if (!inputText) return
+
+      if (inputText.length > 1) {
+        const before = filterInput.slice(0, cursorPos)
+        const after = filterInput.slice(cursorPos)
+        setFilterInput(`${before}${inputText}${after}`)
+        setCursorPos(cursorPos + inputText.length)
+        return
+      }
+
+      const result = getCompletedInput(filterInput, cursorPos, inputText)
       setFilterInput(result.value)
       setCursorPos(result.cursor)
     }
@@ -286,8 +296,34 @@ export function FilterBar({
         .join(", ")
     : ""
 
+  const applyPastedText = useCallback(
+    (rawText: string) => {
+      if (!focused) return
+
+      const pasted = normalizeTextInput(rawText)
+      if (!pasted) return
+
+      const before = filterInput.slice(0, cursorPos)
+      const after = filterInput.slice(cursorPos)
+      setFilterInput(`${before}${pasted}${after}`)
+      setCursorPos(cursorPos + pasted.length)
+    },
+    [focused, filterInput, cursorPos]
+  )
+
+  useEffect(() => subscribePaste(applyPastedText), [applyPastedText])
+
+  const handlePaste = useCallback(
+    (event: { text: string; preventDefault?: () => void; stopPropagation?: () => void }) => {
+      applyPastedText(event.text)
+      event.preventDefault?.()
+      event.stopPropagation?.()
+    },
+    [applyPastedText]
+  )
+
   return (
-    <box height={2} flexDirection="column">
+    <box height={2} flexDirection="column" onPaste={handlePaste}>
       {/* Filter input */}
       <box height={1} flexDirection="row" paddingX={1}>
         <text fg="#565f89">{"Query: "}</text>

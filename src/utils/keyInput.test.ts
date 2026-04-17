@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test"
-import { deleteWordBackward, getPrintableKey, isDeleteWordKey, isInsertNewlineKey, isShiftEnterKey, isSubmitKey } from "./keyInput.ts"
+import {
+  deleteWordBackward,
+  getPrintableKey,
+  getTextInput,
+  normalizeTextInput,
+  isDeleteWordKey,
+  isInsertNewlineKey,
+  isShiftEnterKey,
+  isSubmitKey,
+} from "./keyInput.ts"
 
 describe("keyInput utils", () => {
   test("isSubmitKey supports return and enter", () => {
@@ -27,11 +36,22 @@ describe("keyInput utils", () => {
     expect(isDeleteWordKey({ name: "backspace", ctrl: false })).toBe(false)
   })
 
-  test("getPrintableKey ignores modifiers", () => {
+  test("getPrintableKey ignores modifiers and control characters", () => {
     expect(getPrintableKey({ sequence: "a" })).toBe("a")
+    expect(getPrintableKey({ sequence: "\t" })).toBeNull()
     expect(getPrintableKey({ sequence: "a", ctrl: true })).toBeNull()
     expect(getPrintableKey({ sequence: "a", meta: true })).toBeNull()
     expect(getPrintableKey({ sequence: "a", alt: true })).toBeNull()
+  })
+
+  test("getTextInput handles bracketed paste payload", () => {
+    const seq = "\u001b[200~first\nsecond\u001b[201~"
+    expect(getTextInput({ sequence: seq })).toBe("firstsecond")
+    expect(getTextInput({ sequence: seq }, { allowNewline: true })).toBe("first\nsecond")
+  })
+
+  test("normalizeTextInput drops escape-heavy payload", () => {
+    expect(normalizeTextInput("\u001b[31mred\u001b[0m")).toBe("")
   })
 
   test("deleteWordBackward trims current word and spaces", () => {

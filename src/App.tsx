@@ -5,7 +5,6 @@ import { Sidebar } from "./components/layout/Sidebar.tsx"
 import { MainPanel } from "./components/layout/MainPanel.tsx"
 import { DetailPanel } from "./components/layout/DetailPanel.tsx"
 import type { SelectedCell } from "./components/main/DataTable.tsx"
-import { debug } from "./utils/debug.ts"
 import { Console } from "./components/layout/QueryLog.tsx"
 import { StatusBar } from "./components/layout/StatusBar.tsx"
 import { ConnectionForm } from "./components/sidebar/ConnectionForm.tsx"
@@ -14,6 +13,7 @@ import { useApp } from "./state/AppContext.tsx"
 import { Toast } from "./components/layout/Toast.tsx"
 import { CommandPalette, type CommandItem } from "./components/layout/CommandPalette.tsx"
 import { QueryDatabasePicker, type QueryDatabaseOption } from "./components/layout/QueryDatabasePicker.tsx"
+import { emitPaste } from "./state/paste.ts"
 
 export type FocusZone = "sidebar" | "main" | "detail" | "querylog"
 
@@ -187,20 +187,25 @@ export function App() {
       const text = selection.getSelectedText()
       if (text) {
         renderer.copyToClipboardOSC52(text)
-        debug(`[App] Copied selection (${text.length} chars) to clipboard`)
         // Clear selection so user sees visual feedback
         setTimeout(() => renderer.clearSelection(), 50)
         showToast("Copied to clipboard")
       }
     }
+
+    const handlePaste = (event: { text: string }) => {
+      emitPaste(event.text)
+    }
+
     renderer.on("selection", handleSelection)
+    renderer.keyInput.on("paste", handlePaste)
     return () => {
       renderer.off("selection", handleSelection)
+      renderer.keyInput.off("paste", handlePaste)
     }
   }, [renderer, showToast])
 
   useKeyboard((key) => {
-    debug(`[App] key pressed: name="${key.name}", showConnectionForm=${showConnectionForm}`)
 
     if (key.ctrl && key.name === "q") {
       renderer.destroy()
@@ -227,6 +232,9 @@ export function App() {
       return
     }
 
+    const shouldBlockMainPanelShortcuts = focusZone === "main" && isQueryInputFocused
+    if (shouldBlockMainPanelShortcuts) return
+
     if (key.name === "tab" && !key.ctrl) {
       setFocusZone((z) => {
         const available = ZONES.filter((zone) => {
@@ -240,9 +248,6 @@ export function App() {
       })
       return
     }
-
-    const shouldBlockPanelJump = focusZone === "main" && isQueryInputFocused
-    if (shouldBlockPanelJump) return
 
     if (key.name === "1") setFocusZone("sidebar")
     if (key.name === "2") setFocusZone("main")
@@ -355,9 +360,7 @@ export function App() {
             left={formLeft}
             top={formTop}
             onSubmit={(config) => {
-              debug(`[App] onSubmit received config:`, JSON.stringify(config))
               addConnection(config)
-              debug(`[App] addConnection called, hiding form`)
               setShowConnectionForm(false)
             }}
             onCancel={() => setShowConnectionForm(false)}
