@@ -1,3 +1,5 @@
+import { ObjectId } from "mongodb"
+
 export interface MongoFilterResult {
   filter: Record<string, unknown> | null
   error: string | null
@@ -16,9 +18,51 @@ export interface RedisPatternResult {
   error: string | null
 }
 
+function parseMongoExtendedJson(input: string): unknown {
+  const placeholders: string[] = []
+  let normalized = input
+
+  normalized = normalized.replace(/ObjectId\s*\(\s*(["'])([a-fA-F0-9]{24})\1\s*\)/g, (_match, _quote, hex: string) => {
+    const index = placeholders.push(hex) - 1
+    return `{"$__objectId":"${index}"}`
+  })
+
+  const parsed = JSON.parse(normalized)
+
+  const revive = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      return value.map(revive)
+    }
+
+    if (typeof value !== "object" || value === null) {
+      return value
+    }
+
+    const record = value as Record<string, unknown>
+    const keys = Object.keys(record)
+    if (keys.length === 1 && keys[0] === "$__objectId") {
+      const raw = record.$__objectId
+      const idx = typeof raw === "string" ? Number.parseInt(raw, 10) : -1
+      const hex = idx >= 0 ? placeholders[idx] : undefined
+      if (!hex || !ObjectId.isValid(hex)) {
+        throw new Error("Invalid ObjectId value")
+      }
+      return new ObjectId(hex)
+    }
+
+    const next: Record<string, unknown> = {}
+    for (const [key, child] of Object.entries(record)) {
+      next[key] = revive(child)
+    }
+    return next
+  }
+
+  return revive(parsed)
+}
+
 /**
  * Parse MongoDB JSON filter from string input
- * Returns parsed object or error
+ * Supports ObjectId("...") and ObjectId('...') shell literals.
  */
 export function parseMongoFilter(input: string): MongoFilterResult {
   if (!input || input.trim() === "") {
@@ -26,21 +70,22 @@ export function parseMongoFilter(input: string): MongoFilterResult {
   }
 
   try {
-    const parsed = JSON.parse(input)
-    
-    // Validate it's an object
+    const parsed = parseMongoExtendedJson(input)
+
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       return { filter: null, error: "Filter must be a JSON object" }
     }
 
-    // Check for dangerous operators
     const dangerousOps = ["$where", "$function", "$accumulator"]
     const checkDangerous = (obj: unknown): boolean => {
       if (typeof obj !== "object" || obj === null) return false
+      if (obj instanceof ObjectId) return false
+
       for (const key of Object.keys(obj)) {
         if (dangerousOps.includes(key)) return true
-        if (typeof obj[key as keyof typeof obj] === "object") {
-          if (checkDangerous(obj[key as keyof typeof obj])) return true
+        const value = (obj as Record<string, unknown>)[key]
+        if (typeof value === "object" && checkDangerous(value)) {
+          return true
         }
       }
       return false
@@ -50,7 +95,7 @@ export function parseMongoFilter(input: string): MongoFilterResult {
       return { filter: null, error: "Dangerous operators ($where, $function) not allowed" }
     }
 
-    return { filter: parsed, error: null }
+    return { filter: parsed as Record<string, unknown>, error: null }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     return { filter: null, error: `Invalid JSON: ${msg}` }

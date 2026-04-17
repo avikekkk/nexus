@@ -32,6 +32,14 @@ describe("mongo completion", () => {
     expect(result?.items[0]?.kind).toBe("field")
   })
 
+  test("suggests ObjectId snippet for _id filter values", () => {
+    const query = "db.users.find({_id: Obj"
+    const result = mongoCompletionProvider.getCompletions(baseContext({ query, cursor: query.length, dbType: "mongo" }))
+
+    expect(result).not.toBeNull()
+    expect(result?.items[0]?.label).toBe("ObjectId(\"...\")")
+  })
+
   test("does not suggest field names while typing a value", () => {
     const query = 'db.users.find({name: "al"})'
     const result = mongoCompletionProvider.getCompletions(baseContext({ query, cursor: query.indexOf("al") + 2, dbType: "mongo" }))

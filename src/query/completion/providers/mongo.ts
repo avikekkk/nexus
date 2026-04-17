@@ -2,7 +2,7 @@ import { rankCompletionSuggestions } from "../ranking.ts"
 import type { CompletionContext, CompletionProvider, CompletionResult, CompletionSuggestion } from "../types.ts"
 
 interface ParsedContext {
-  mode: "collections" | "rootOperations" | "chainOperations" | "filterFields"
+  mode: "collections" | "rootOperations" | "chainOperations" | "filterFields" | "filterObjectId"
   token: string
   replaceStart: number
   replaceEnd: number
@@ -202,6 +202,19 @@ function parseMongoCompletionContext(query: string, cursor: number): ParsedConte
   if (filterCall) {
     const collection = filterCall[1] ?? ""
     const filterBody = filterCall[3] ?? ""
+
+    const objectIdMatch = /(?:^|,)\s*["']?_id["']?\s*:\s*([A-Za-z0-9_$]*)$/i.exec(filterBody)
+    if (objectIdMatch) {
+      const token = objectIdMatch[1] ?? ""
+      return {
+        mode: "filterObjectId",
+        token,
+        replaceStart: cursor - token.length,
+        replaceEnd: cursor,
+        collection,
+      }
+    }
+
     const keyToken = extractMongoKeyToken(filterBody)
     if (keyToken) {
       const filterBodyStart = cursor - filterBody.length
@@ -261,6 +274,26 @@ export const mongoCompletionProvider: CompletionProvider = {
   getCompletions(context: CompletionContext): CompletionResult | null {
     const parsed = parseMongoCompletionContext(context.query, context.cursor)
     if (!parsed) return null
+
+    if (parsed.mode === "filterObjectId") {
+      return {
+        items: rankCompletionSuggestions(
+          [
+            {
+              id: "mongo-filter-objectid",
+              label: "ObjectId(\"...\")",
+              kind: "snippet",
+              insertText: "ObjectId(\"\")",
+              cursorOffset: "ObjectId(\"".length,
+              detail: "Mongo ObjectId value",
+            },
+          ],
+          parsed.token
+        ),
+        replaceStart: parsed.replaceStart,
+        replaceEnd: parsed.replaceEnd,
+      }
+    }
 
     if (parsed.mode === "filterFields") {
       const collectionFields = parsed.collection ? context.schema.collectionFields[parsed.collection] ?? [] : []
