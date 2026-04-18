@@ -54,6 +54,13 @@ export function QueryConsole({
   }, [query])
 
   const lines = useMemo(() => query.split("\n"), [query])
+  const lineStarts = useMemo(() => {
+    const starts: number[] = [0]
+    for (let i = 0; i < query.length; i++) {
+      if (query[i] === "\n") starts.push(i + 1)
+    }
+    return starts
+  }, [query])
   const beforeCursor = query.slice(0, cursorPos)
   const cursorLine = beforeCursor.split("\n").length - 1
   const cursorColumn = beforeCursor.length - (beforeCursor.lastIndexOf("\n") + 1)
@@ -275,10 +282,12 @@ export function QueryConsole({
             <text fg="#565f89">db.users.find(&#123;"year": &#123;"$gte": 2000&#125;&#125;).sort(&#123;"year": -1&#125;).limit(20)</text>
           </>
         ) : (
-          lines.map((line, index) => {
-            if (!focused || index !== cursorLine) {
+          lines.map((line, lineIndex) => {
+            const lineKey = `line-${lineStarts[lineIndex] ?? lineIndex}`
+
+            if (!focused || lineIndex !== cursorLine) {
               return (
-                <text key={index} fg="#a9b1d6">
+                <text key={lineKey} fg="#a9b1d6">
                   {line || " "}
                 </text>
               )
@@ -292,7 +301,7 @@ export function QueryConsole({
             const completionLeft = Math.max(0, safeColumn)
 
             return (
-              <box key={index} flexDirection="column">
+              <box key={lineKey} flexDirection="column">
                 <text fg="#c0caf5">
                   {before}
                   {current ? (

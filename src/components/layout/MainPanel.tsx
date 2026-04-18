@@ -33,6 +33,10 @@ export function MainPanel({
   const [querySchemaCollections, setQuerySchemaCollections] = useState<string[]>([])
   const querySchemaCacheRef = useRef(new Map<string, string[]>())
 
+  const applyQuerySchemaCollections = useCallback((collections: string[]) => {
+    setQuerySchemaCollections(collections)
+  }, [])
+
   const activeTab = tabs.find((t) => t.id === activeTabId)
   const activeData = activeTabId ? tabData.get(activeTabId) : undefined
   const isQueryConsoleTab = activeTab?.kind === "query-console"
@@ -85,19 +89,12 @@ export function MainPanel({
   }, [activeTabId, fetchTabData, tabData, tabs])
 
   useEffect(() => {
-    if (isQueryConsoleTab) {
-      setFilterBarFocused(false)
-      setQueryInputFocused(true)
-    }
-  }, [isQueryConsoleTab, activeTabId])
-
-  useEffect(() => {
     onQueryInputFocusChange?.(isQueryConsoleTab && queryInputFocused)
   }, [isQueryConsoleTab, queryInputFocused, onQueryInputFocusChange])
 
   useEffect(() => {
     if (!isQueryConsoleTab || !activeTab) {
-      setQuerySchemaCollections([])
+      applyQuerySchemaCollections([])
       return
     }
 
@@ -105,19 +102,19 @@ export function MainPanel({
 
     if (schemaCollectionsFromTree.length > 0) {
       querySchemaCacheRef.current.set(cacheKey, schemaCollectionsFromTree)
-      setQuerySchemaCollections(schemaCollectionsFromTree)
+      applyQuerySchemaCollections(schemaCollectionsFromTree)
       return
     }
 
     const cached = querySchemaCacheRef.current.get(cacheKey)
     if (cached && cached.length > 0) {
-      setQuerySchemaCollections(cached)
+      applyQuerySchemaCollections(cached)
       return
     }
 
     const driver = getDriver(activeTab.connectionId)
     if (!driver) {
-      setQuerySchemaCollections([])
+      applyQuerySchemaCollections([])
       return
     }
 
@@ -129,18 +126,18 @@ export function MainPanel({
         if (cancelled) return
         const names = collections.map((collection) => collection.name)
         querySchemaCacheRef.current.set(cacheKey, names)
-        setQuerySchemaCollections(names)
+        applyQuerySchemaCollections(names)
       })
       .catch(() => {
         if (!cancelled) {
-          setQuerySchemaCollections([])
+          applyQuerySchemaCollections([])
         }
       })
 
     return () => {
       cancelled = true
     }
-  }, [activeTab, getDriver, isQueryConsoleTab, schemaCollectionsFromTree])
+  }, [activeTab, applyQuerySchemaCollections, getDriver, isQueryConsoleTab, schemaCollectionsFromTree])
 
   useKeyboard((key) => {
     if (!focused) return

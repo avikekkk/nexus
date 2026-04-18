@@ -31,8 +31,8 @@ export function DetailPanel({
   dbType,
 }: DetailPanelProps) {
   const borderColor = focused ? "#7aa2f7" : "#414868"
-  const [value, setValue] = useState(stringifyValue(originalValue))
-  const [cursorPos, setCursorPos] = useState(value.length)
+  const [value, setValue] = useState(() => stringifyValue(originalValue))
+  const [cursorPos, setCursorPos] = useState(() => stringifyValue(originalValue).length)
   const [error, setError] = useState<string | null>(null)
   const [isApplying, setIsApplying] = useState(false)
   const [viewportTop, setViewportTop] = useState(0)
@@ -45,7 +45,7 @@ export function DetailPanel({
   const effectiveVisibleRows = measuredViewportRows ?? visibleContentRows
   const effectiveContentCols = Math.max(1, innerWidth - 1)
 
-  useEffect(() => {
+  const resetEditorState = useCallback(() => {
     const text = stringifyValue(originalValue)
     setValue(text)
     setCursorPos(0)
@@ -54,7 +54,11 @@ export function DetailPanel({
     setViewportTop(0)
     setConfirmClose(false)
     preferredColumnRef.current = 0
-  }, [originalValue, fieldName])
+  }, [originalValue])
+
+  useEffect(() => {
+    resetEditorState()
+  }, [fieldName, resetEditorState])
 
   const dirty = value !== stringifyValue(originalValue)
 
@@ -164,18 +168,20 @@ export function DetailPanel({
       const targetLineIndex = currentLineIndex + direction
       if (targetLineIndex < 0 || targetLineIndex >= contentLines.length) return
 
-      const currentLineStart = lineStarts[currentLineIndex] ?? 0
-      const targetLineStart = lineStarts[targetLineIndex] ?? 0
-      const targetLineLength = contentLines[targetLineIndex]?.length ?? 0
-      const currentColumn = cursorPos - currentLineStart
-      const preferredColumn = preferredColumnRef.current ?? currentColumn
-      const nextColumn = Math.min(preferredColumn, targetLineLength)
+      setCursorPos((prevCursorPos) => {
+        const currentLineStart = lineStarts[currentLineIndex] ?? 0
+        const targetLineStart = lineStarts[targetLineIndex] ?? 0
+        const targetLineLength = contentLines[targetLineIndex]?.length ?? 0
+        const currentColumn = prevCursorPos - currentLineStart
+        const preferredColumn = preferredColumnRef.current ?? currentColumn
+        const nextColumn = Math.min(preferredColumn, targetLineLength)
 
-      preferredColumnRef.current = preferredColumn
-      setCursorPos(targetLineStart + nextColumn)
+        preferredColumnRef.current = preferredColumn
+        return targetLineStart + nextColumn
+      })
       setConfirmClose(false)
     },
-    [contentLines, currentLineIndex, cursorPos, lineStarts]
+    [contentLines, currentLineIndex, lineStarts]
   )
 
   useKeyboard((key) => {
@@ -280,7 +286,7 @@ export function DetailPanel({
       const after = value.slice(cursorPos)
       preferredColumnRef.current = null
       setValue(before + "\n" + after)
-      setCursorPos(cursorPos + 1)
+      setCursorPos((prev) => prev + 1)
       setConfirmClose(false)
       return
     }
@@ -317,7 +323,7 @@ export function DetailPanel({
       const after = value.slice(cursorPos)
       preferredColumnRef.current = null
       setValue(before + inputText + after)
-      setCursorPos(cursorPos + inputText.length)
+      setCursorPos((prev) => prev + inputText.length)
       setConfirmClose(false)
     }
   })
@@ -343,7 +349,7 @@ export function DetailPanel({
       const after = value.slice(cursorPos)
       preferredColumnRef.current = null
       setValue(before + pasted + after)
-      setCursorPos(cursorPos + pasted.length)
+      setCursorPos((prev) => prev + pasted.length)
       setConfirmClose(false)
     },
     [focused, value, cursorPos]
@@ -409,12 +415,13 @@ export function DetailPanel({
         {value.length === 0 ? (
           <text fg="#565f89">(empty)</text>
         ) : (
-          contentLines.map((line, index) => {
-            const isCursorLine = focused && index === currentLineIndex
+          contentLines.map((line, lineIndex) => {
+            const lineKey = `line-${lineStarts[lineIndex] ?? lineIndex}`
+            const isCursorLine = focused && lineIndex === currentLineIndex
 
             if (!isCursorLine || cursorColumn < 0 || cursorColumn > line.length) {
               return (
-                <text key={`line-${index}`} fg="#a9b1d6">
+                <text key={lineKey} fg="#a9b1d6">
                   {line}
                 </text>
               )
@@ -426,7 +433,7 @@ export function DetailPanel({
             const after = cursorAtEnd ? "" : line.slice(cursorColumn + 1)
 
             return (
-              <text key={`line-${index}`} fg="#a9b1d6">
+              <text key={lineKey} fg="#a9b1d6">
                 {before}
                 <span fg="#1a1b26" bg="#7aa2f7">
                   {ch}

@@ -158,8 +158,8 @@ export function FilterBar({
   onClear,
   onUnfocus,
 }: FilterBarProps) {
-  const [filterInput, setFilterInput] = useState(currentFilter)
-  const [cursorPos, setCursorPos] = useState(currentFilter.length)
+  const [filterInput, setFilterInput] = useState("")
+  const [cursorPos, setCursorPos] = useState(0)
   const [validationError, setValidationError] = useState<string | null>(null)
 
   // Sync with external changes
@@ -280,7 +280,7 @@ export function FilterBar({
         const before = filterInput.slice(0, cursorPos)
         const after = filterInput.slice(cursorPos)
         setFilterInput(`${before}${inputText}${after}`)
-        setCursorPos(cursorPos + inputText.length)
+        setCursorPos((prev) => prev + inputText.length)
         return
       }
 
@@ -306,7 +306,7 @@ export function FilterBar({
       const before = filterInput.slice(0, cursorPos)
       const after = filterInput.slice(cursorPos)
       setFilterInput(`${before}${pasted}${after}`)
-      setCursorPos(cursorPos + pasted.length)
+      setCursorPos((prev) => prev + pasted.length)
     },
     [focused, filterInput, cursorPos]
   )

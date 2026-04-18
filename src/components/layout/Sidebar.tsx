@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useKeyboard } from "@opentui/react"
 import type { ScrollBoxRenderable } from "@opentui/core"
 import { useApp } from "../../state/AppContext.tsx"
@@ -20,6 +20,15 @@ interface SidebarProps {
   onFocusMain?: () => void
 }
 
+interface SidebarRowsProps {
+  width: number
+  focused: boolean
+  selectedIndex: number
+  rows: RowItem[]
+  connections: ReturnType<typeof useApp>["state"]["connections"]
+  allDatabases: ReturnType<typeof useApp>["state"]["allDatabases"]
+}
+
 function truncateName(name: string, maxLen: number): string {
   if (name.length <= maxLen) return name
   if (maxLen <= 1) return "…"
@@ -29,6 +38,80 @@ function truncateName(name: string, maxLen: number): string {
 type RowItem =
   | { kind: "connection"; index: number; connectionId: string }
   | { kind: "tree"; node: FlatNode }
+
+function EmptyConnectionsState(): ReactNode {
+  return (
+    <box flexGrow={1} flexDirection="column" padding={1} gap={0}>
+      <text fg="#565f89">No connections yet</text>
+      <text fg="#565f89">
+        Press <span fg="#7aa2f7">a</span> to add one
+      </text>
+    </box>
+  )
+}
+
+function SidebarFooter({ hasConnections }: { hasConnections: boolean }): ReactNode {
+  return (
+    <box paddingX={1} flexDirection="column" flexShrink={0}>
+      <text fg="#414868">
+        <span fg="#7aa2f7">[a]</span> Add
+        {hasConnections && (
+          <>
+            {"  "}
+            <span fg="#7aa2f7">[e]</span> DBs
+            {"  "}
+            <span fg="#7aa2f7">[s]</span> Search
+          </>
+        )}
+      </text>
+      {hasConnections && (
+        <text fg="#414868">
+          <span fg="#7aa2f7">[Enter]</span> Open{"  "}
+          <span fg="#7aa2f7">[x]</span> Del
+        </text>
+      )}
+    </box>
+  )
+}
+
+function SidebarRows({ width, focused, selectedIndex, rows, connections, allDatabases }: SidebarRowsProps): ReactNode {
+  return (
+    <>
+      {rows.map((row, rowIndex) => {
+        const isSelected = rowIndex === selectedIndex && focused
+        const bg = isSelected ? "#283457" : "transparent"
+        const fg = isSelected ? "#c0caf5" : "#a9b1d6"
+
+        if (row.kind === "connection") {
+          const conn = connections[row.index]!
+          const typeIcon = DB_TYPE_ICONS[conn.config.type]
+          const iconColor = getIconColor(conn.config.type, conn.status)
+          const allDbs = allDatabases.get(conn.config.id)
+          const dbCount = allDbs ? allDbs.length : 0
+          const dbCountLabel = dbCount > 0 ? ` (${dbCount})` : ""
+          const statusIndicator = conn.status !== "connected" ? ` ${STATUS_INDICATORS[conn.status]}` : ""
+          const maxNameLen = Math.max(3, width - 2 - 1 - 1 - dbCountLabel.length - statusIndicator.length - 2)
+          const displayName = truncateName(conn.config.name, maxNameLen)
+
+          return (
+            <box key={conn.config.id} flexDirection="row" gap={1} paddingX={1} backgroundColor={bg} justifyContent="space-between">
+              <box flexDirection="row" gap={1}>
+                <text fg={iconColor}>{typeIcon}</text>
+                <text fg={fg}>
+                  {displayName}
+                  {statusIndicator && <span fg={iconColor}>{statusIndicator}</span>}
+                </text>
+              </box>
+              {dbCount > 0 && <text fg="#565f89">{dbCountLabel}</text>}
+            </box>
+          )
+        }
+
+        return <TreeRow key={row.node.id} node={row.node} isSelected={isSelected} maxWidth={width - 4} />
+      })}
+    </>
+  )
+}
 
 export function Sidebar({
   width,
@@ -56,44 +139,34 @@ export function Sidebar({
     treeNextCursor: state.treeNextCursor,
   }
 
-  // Build flat list of all visible rows
   const rows = useMemo<RowItem[]>(() => {
     const items: RowItem[] = []
-    state.connections.forEach((conn, i) => {
-      items.push({ kind: "connection", index: i, connectionId: conn.config.id })
-      if (conn.status === "connected") {
-        const treeNodes = flattenTreeNodes(conn, treeState)
-        for (const node of treeNodes) {
-          items.push({ kind: "tree", node })
-        }
-      }
-    })
-    return items
-  }, [
-    state.connections,
-    state.treeExpanded,
-    state.treeLoading,
-    state.treeChildren,
-    state.treeVisibleCount,
-    state.treeNextCursor,
-  ])
 
-  // Auto-expand connection tree when first connected
+    state.connections.forEach((conn, index) => {
+      items.push({ kind: "connection", index, connectionId: conn.config.id })
+      if (conn.status !== "connected") return
+
+      const treeNodes = flattenTreeNodes(conn, treeState)
+      for (const node of treeNodes) items.push({ kind: "tree", node })
+    })
+
+    return items
+  }, [state.connections, state.treeExpanded, state.treeLoading, state.treeChildren, state.treeVisibleCount, state.treeNextCursor])
+
   useEffect(() => {
     for (const conn of state.connections) {
-      if (conn.status === "connected") {
-        const connNid = nodeId(conn.config.id)
-        if (!state.treeExpanded.has(connNid) && !state.treeChildren.has(connNid)) {
-          toggleExpand(connNid, conn.config.id)
-        }
+      if (conn.status !== "connected") continue
+
+      const connNid = nodeId(conn.config.id)
+      if (!state.treeExpanded.has(connNid) && !state.treeChildren.has(connNid)) {
+        toggleExpand(connNid, conn.config.id)
       }
     }
-  }, [state.connections])
+  }, [state.connections, state.treeExpanded, state.treeChildren, toggleExpand])
 
   const footerRows = state.connections.length > 0 ? 2 : 1
   const listViewportHeight = Math.max(1, height - 2 - footerRows)
 
-  // Clamp selected index
   useEffect(() => {
     if (rows.length === 0 && selectedIndex !== 0) {
       setSelectedIndex(0)
@@ -105,27 +178,22 @@ export function Sidebar({
     }
   }, [rows.length, selectedIndex])
 
-  // Keep the selected row visible inside the scrollbox viewport
   useEffect(() => {
     const scrollbox = scrollRef.current
     if (!scrollbox || rows.length === 0) return
 
     const scrollTop = scrollbox.scrollTop
     const viewportHeight = scrollbox.viewport.height
-    
-    // Scroll to keep selected item visible
+
     if (selectedIndex < scrollTop) {
-      // Selected item is above viewport - scroll up to show it at top
       scrollbox.scrollTo({ x: 0, y: selectedIndex })
     } else if (selectedIndex >= scrollTop + viewportHeight) {
-      // Selected item is below viewport - scroll down to show it at bottom
       scrollbox.scrollTo({ x: 0, y: selectedIndex - viewportHeight + 1 })
     }
   }, [selectedIndex, rows.length, listViewportHeight])
 
   useKeyboard((key) => {
-    if (!focused) return
-    if (showConnectionForm || showDatabasePicker || showSearchDialog) return
+    if (!focused || showConnectionForm || showDatabasePicker || showSearchDialog) return
 
     if (key.name === "a") {
       onShowConnectionForm()
@@ -135,20 +203,22 @@ export function Sidebar({
     if (rows.length === 0) return
 
     if (key.name === "j" || key.name === "down") {
-      setSelectedIndex((i) => Math.min(rows.length - 1, i + 1))
+      setSelectedIndex((index) => Math.min(rows.length - 1, index + 1))
       return
     }
+
     if (key.name === "k" || key.name === "up") {
-      setSelectedIndex((i) => Math.max(0, i - 1))
+      setSelectedIndex((index) => Math.max(0, index - 1))
       return
     }
 
     if (key.name === "pagedown") {
-      setSelectedIndex((i) => Math.min(rows.length - 1, i + listViewportHeight))
+      setSelectedIndex((index) => Math.min(rows.length - 1, index + listViewportHeight))
       return
     }
+
     if (key.name === "pageup") {
-      setSelectedIndex((i) => Math.max(0, i - listViewportHeight))
+      setSelectedIndex((index) => Math.max(0, index - listViewportHeight))
       return
     }
 
@@ -156,6 +226,7 @@ export function Sidebar({
       setSelectedIndex(0)
       return
     }
+
     if (key.name === "end" || key.name === "G") {
       setSelectedIndex(rows.length - 1)
       return
@@ -166,12 +237,14 @@ export function Sidebar({
 
     if (key.name === "e") {
       let connectionId: string | null = null
+
       if (row.kind === "connection") {
         const conn = state.connections[row.index]
         if (conn && conn.status === "connected") connectionId = conn.config.id
-      } else if (row.kind === "tree") {
+      } else {
         connectionId = row.node.connectionId
       }
+
       if (connectionId && state.allDatabases.has(connectionId)) {
         onShowDatabasePicker(connectionId)
       }
@@ -180,7 +253,7 @@ export function Sidebar({
 
     if (key.name === "s") {
       if (row.kind === "tree" && row.node.database) {
-        const conn = state.connections.find((c) => c.config.id === row.node.connectionId)
+        const conn = state.connections.find((connection) => connection.config.id === row.node.connectionId)
         if (conn) onShowSearchDialog(row.node.connectionId, conn.config.name, row.node.database)
       }
       return
@@ -190,13 +263,15 @@ export function Sidebar({
       if (row.kind === "connection") {
         const conn = state.connections[row.index]
         if (!conn) return
+
         if (conn.status === "disconnected" || conn.status === "error") {
           connectTo(conn.config.id)
         } else if (conn.status === "connected") {
           toggleExpand(nodeId(conn.config.id), conn.config.id)
         }
-      } else if (row.kind === "tree") {
+      } else {
         const { node } = row
+
         if (node.type === "database" && !node.isLoading) {
           toggleExpand(node.id, node.connectionId, node.database)
         } else if (node.type === "collection" && node.collection && node.database) {
@@ -222,7 +297,7 @@ export function Sidebar({
         const conn = state.connections[row.index]
         if (conn) {
           removeConnection(conn.config.id)
-          setSelectedIndex((i) => Math.max(0, i - 1))
+          setSelectedIndex((index) => Math.max(0, index - 1))
         }
       }
       return
@@ -245,7 +320,6 @@ export function Sidebar({
           if (!state.treeExpanded.has(connNid)) toggleExpand(connNid, conn.config.id)
         }
       }
-      return
     }
   })
 
@@ -261,12 +335,7 @@ export function Sidebar({
       titleAlignment="left"
     >
       {rows.length === 0 ? (
-        <box flexGrow={1} flexDirection="column" padding={1} gap={0}>
-          <text fg="#565f89">No connections yet</text>
-          <text fg="#565f89">
-            Press <span fg="#7aa2f7">a</span> to add one
-          </text>
-        </box>
+        <EmptyConnectionsState />
       ) : (
         <scrollbox
           ref={scrollRef}
@@ -281,66 +350,18 @@ export function Sidebar({
             },
           }}
         >
-          {rows.map((row, i) => {
-            const isSelected = i === selectedIndex && focused
-            const bg = isSelected ? "#283457" : "transparent"
-            const fg = isSelected ? "#c0caf5" : "#a9b1d6"
-
-            if (row.kind === "connection") {
-              const conn = state.connections[row.index]!
-              const typeIcon = DB_TYPE_ICONS[conn.config.type]
-              const iconColor = getIconColor(conn.config.type, conn.status)
-              
-              // Get database count for this connection
-              const allDbs = state.allDatabases.get(conn.config.id)
-              const dbCount = allDbs ? allDbs.length : 0
-              const dbCountLabel = dbCount > 0 ? ` (${dbCount})` : ""
-              
-              // Status indicator for non-connected states
-              const statusIndicator = conn.status !== "connected" ? ` ${STATUS_INDICATORS[conn.status]}` : ""
-              
-              const maxNameLen = Math.max(3, width - 2 - 1 - 1 - dbCountLabel.length - statusIndicator.length - 2)
-              const displayName = truncateName(conn.config.name, maxNameLen)
-              return (
-                <box key={conn.config.id} flexDirection="row" gap={1} paddingX={1} backgroundColor={bg} justifyContent="space-between">
-                  <box flexDirection="row" gap={1}>
-                    <text fg={iconColor}>{typeIcon}</text>
-                    <text fg={fg}>
-                      {displayName}
-                      {statusIndicator && <span fg={iconColor}>{statusIndicator}</span>}
-                    </text>
-                  </box>
-                  {dbCount > 0 && (
-                    <text fg="#565f89">{dbCountLabel}</text>
-                  )}
-                </box>
-              )
-            }
-
-            return <TreeRow key={row.node.id} node={row.node} isSelected={isSelected} maxWidth={width - 4} />
-          })}
+          <SidebarRows
+            width={width}
+            focused={focused}
+            selectedIndex={selectedIndex}
+            rows={rows}
+            connections={state.connections}
+            allDatabases={state.allDatabases}
+          />
         </scrollbox>
       )}
 
-      <box paddingX={1} flexDirection="column" flexShrink={0}>
-        <text fg="#414868">
-          <span fg="#7aa2f7">[a]</span> Add
-          {state.connections.length > 0 && (
-            <>
-              {"  "}
-              <span fg="#7aa2f7">[e]</span> DBs
-              {"  "}
-              <span fg="#7aa2f7">[s]</span> Search
-            </>
-          )}
-        </text>
-        {state.connections.length > 0 && (
-          <text fg="#414868">
-            <span fg="#7aa2f7">[Enter]</span> Open{"  "}
-            <span fg="#7aa2f7">[x]</span> Del
-          </text>
-        )}
-      </box>
+      <SidebarFooter hasConnections={state.connections.length > 0} />
     </box>
   )
 }

@@ -78,25 +78,40 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
     }
   }, [visibleDbs, mode])
 
+  const applyEditUrlParseState = useCallback(
+    (next: { urlError: string; host?: string; port?: string; username?: string; password?: string }) => {
+      setEditUrlError(next.urlError)
+      if (next.host !== undefined) setEditHost(next.host)
+      if (next.port !== undefined) setEditPort(next.port)
+      if (next.username !== undefined) setEditUsername(next.username)
+      if (next.password !== undefined) setEditPassword(next.password)
+    },
+    []
+  )
+
   // Validate edit URL
   const hasEditUrl = editUrl.trim().length > 0
   useEffect(() => {
     if (!hasEditUrl) {
-      setEditUrlError("")
+      applyEditUrlParseState({ urlError: "" })
       return
     }
+
     const result = parseConnectionUrl(editUrl, editDbType)
     if (!result.valid) {
-      setEditUrlError(result.error ?? "Invalid URL")
+      applyEditUrlParseState({ urlError: result.error ?? "Invalid URL" })
       return
     }
-    setEditUrlError("")
-    const p = result.parsed!
-    setEditHost(p.host)
-    setEditPort(String(p.port))
-    setEditUsername(p.username ?? "")
-    setEditPassword(p.password ?? "")
-  }, [editUrl, editDbType, hasEditUrl])
+
+    const parsed = result.parsed!
+    applyEditUrlParseState({
+      urlError: "",
+      host: parsed.host,
+      port: String(parsed.port),
+      username: parsed.username ?? "",
+      password: parsed.password ?? "",
+    })
+  }, [applyEditUrlParseState, editUrl, editDbType, hasEditUrl])
 
   // Server-side search for search mode
   const doSearch = useCallback((query: string, cursor: string | null = null, append = false) => {

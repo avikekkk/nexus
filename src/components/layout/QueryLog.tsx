@@ -63,8 +63,8 @@ export function Console({ height, focused }: ConsoleProps) {
             },
           }}
         >
-          {entries.map((entry, idx) => (
-            <text key={idx} fg={getLevelColor(entry.level)}>
+          {entries.map((entry) => (
+            <text key={entry.id} fg={getLevelColor(entry.level)}>
               {formatEntry(entry)}
             </text>
           ))}

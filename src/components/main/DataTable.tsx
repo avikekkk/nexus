@@ -136,6 +136,13 @@ export function DataTable({
   const { columns, rows: allRows, totalCount } = result
   const usesLocalPagination = !onPageChange
   const [localOffset, setLocalOffset] = useState(0)
+
+  const resetLocalPaginationView = useCallback(() => {
+    setLocalOffset(0)
+    setSelectedRow(0)
+    setViewportRowOffset(0)
+  }, [])
+
   const effectivePageSize = FIXED_PAGE_SIZE
   const effectiveOffset = usesLocalPagination ? localOffset : currentOffset
   const rows = usesLocalPagination ? allRows.slice(localOffset, localOffset + effectivePageSize) : allRows
@@ -143,10 +150,8 @@ export function DataTable({
 
   useEffect(() => {
     if (!usesLocalPagination) return
-    setLocalOffset(0)
-    setSelectedRow(0)
-    setViewportRowOffset(0)
-  }, [usesLocalPagination, allRows])
+    resetLocalPaginationView()
+  }, [usesLocalPagination, allRows, resetLocalPaginationView])
 
   // Reset selection when data changes (e.g., page change)
   useEffect(() => {
