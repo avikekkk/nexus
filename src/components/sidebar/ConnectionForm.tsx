@@ -22,6 +22,8 @@ const DB_TYPES: { name: string; value: DbType }[] = [
   { name: "Redis", value: "redis" },
 ]
 
+const DEFAULT_DB_TYPE: DbType = DB_TYPES[0]!.value
+
 function wrapDbTypeRows(types: { name: string; value: DbType }[], maxWidth: number): { name: string; value: DbType }[][] {
   const rows: { name: string; value: DbType }[][] = []
   let currentRow: { name: string; value: DbType }[] = []
@@ -84,12 +86,14 @@ type FormAction =
     }
 
 function buildInitialState(existingConfig?: ConnectionConfig): FormState {
+  const initialDbType = existingConfig?.type ?? DEFAULT_DB_TYPE
+
   return {
     name: existingConfig?.name ?? "",
-    dbType: existingConfig?.type ?? "mongo",
+    dbType: initialDbType,
     url: existingConfig?.url ?? "",
     host: existingConfig?.host ?? "localhost",
-    port: String(existingConfig?.port ?? DEFAULT_PORTS.mongo),
+    port: String(existingConfig?.port ?? DEFAULT_PORTS[initialDbType]),
     username: existingConfig?.username ?? "",
     password: existingConfig?.password ?? "",
     tls: existingConfig?.tls ?? false,
