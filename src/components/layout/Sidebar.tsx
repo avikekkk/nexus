@@ -58,7 +58,7 @@ function SidebarFooter({ hasConnections }: { hasConnections: boolean }): ReactNo
         {hasConnections && (
           <>
             {"  "}
-            <span fg="#7aa2f7">[e]</span> DBs
+            <span fg="#7aa2f7">[e]</span> Edit
             {"  "}
             <span fg="#7aa2f7">[s]</span> Search
           </>
@@ -240,12 +240,12 @@ export function Sidebar({
 
       if (row.kind === "connection") {
         const conn = state.connections[row.index]
-        if (conn && conn.status === "connected") connectionId = conn.config.id
+        if (conn) connectionId = conn.config.id
       } else {
         connectionId = row.node.connectionId
       }
 
-      if (connectionId && state.allDatabases.has(connectionId)) {
+      if (connectionId) {
         onShowDatabasePicker(connectionId)
       }
       return

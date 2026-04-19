@@ -84,6 +84,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   const [editPort, setEditPort] = useState(String(existingConfig?.port ?? DEFAULT_PORTS.mongo))
   const [editUsername, setEditUsername] = useState(existingConfig?.username ?? "")
   const [editPassword, setEditPassword] = useState(existingConfig?.password ?? "")
+  const [editTls, setEditTls] = useState(existingConfig?.tls ?? false)
   const [editFocusIndex, setEditFocusIndex] = useState(0)
   const [editUrlError, setEditUrlError] = useState("")
 
@@ -94,7 +95,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
     { name: "Redis", value: "redis" },
   ]
   const dbTypeRows = wrapDbTypeRows(DB_TYPES, 30)
-  const EDIT_FIELD_COUNT = 8
+  const EDIT_FIELD_COUNT = 9
 
   const isSearch = mode === "search"
   const title = isSearch ? ` Search: ${database} ` : activeTab === "databases" ? " Select Databases " : " Edit Connection "
@@ -108,12 +109,13 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   }, [visibleDbs, mode])
 
   const applyEditUrlParseState = useCallback(
-    (next: { urlError: string; host?: string; port?: string; username?: string; password?: string }) => {
+    (next: { urlError: string; host?: string; port?: string; username?: string; password?: string; tls?: boolean }) => {
       setEditUrlError(next.urlError)
       if (next.host !== undefined) setEditHost(next.host)
       if (next.port !== undefined) setEditPort(next.port)
       if (next.username !== undefined) setEditUsername(next.username)
       if (next.password !== undefined) setEditPassword(next.password)
+      if (next.tls !== undefined) setEditTls(next.tls)
     },
     []
   )
@@ -139,6 +141,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       port: String(parsed.port),
       username: parsed.username ?? "",
       password: parsed.password ?? "",
+      tls: parsed.tls,
     })
   }, [applyEditUrlParseState, editUrl, editDbType, hasEditUrl])
 
@@ -229,8 +232,8 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   const maxListRows = 15
   const listRows = Math.max(minListRows, Math.min(displayItems.length, maxListRows))
   const tabHeaderRows = !isSearch ? 2 : 0 // Tab headers when in select mode
-  // Edit tab: tabs(2) + fields(8) + error row(0-1) + save button(2) + hints(3) = ~15-16 + padding
-  const height = activeTab === "edit" ? 21 : 1 + 1 + searchRows + listRows + 1 + 2 + 2 + tabHeaderRows // title + info + search + list + margin + shortcuts + padding + tabs
+  // Edit tab: tabs(2) + fields(9) + error row(0-1) + save button(2) + hints(3) = ~16-17 + padding
+  const height = activeTab === "edit" ? 22 : 1 + 1 + searchRows + listRows + 1 + 2 + 2 + tabHeaderRows // title + info + search + list + margin + shortcuts + padding + tabs
   const listHeight = listRows
 
   useKeyboard((key) => {
@@ -276,6 +279,11 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
 
       if (key.name === "return") {
         if (editFocusIndex === 7) {
+          setEditTls((v) => !v)
+          return
+        }
+
+        if (editFocusIndex === 8) {
           if (hasEditUrl && editUrlError) {
             return
           }
@@ -286,6 +294,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
             port: parseInt(editPort, 10) || DEFAULT_PORTS[editDbType],
             username: editUsername || undefined,
             password: editPassword || undefined,
+            tls: editTls,
             url: hasEditUrl ? editUrl.trim() : undefined,
           }
           updateConnection(connectionId, config)
@@ -295,9 +304,9 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       }
 
       if (editFocusIndex === 1) {
-        if (key.name === "left" || key.name === "right") {
+        if (key.name === "left" || key.name === "right" || key.name === "j" || key.name === "k") {
           const currentIdx = DB_TYPES.findIndex((t) => t.value === editDbType)
-          const dir = key.name === "left" ? -1 : 1
+          const dir = key.name === "left" || key.name === "k" ? -1 : 1
           const nextIdx = (currentIdx + dir + DB_TYPES.length) % DB_TYPES.length
           const next = DB_TYPES[nextIdx]!
           setEditDbType(next.value)
@@ -305,6 +314,10 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
             setEditPort(String(DEFAULT_PORTS[next.value]))
           }
         }
+      }
+
+      if (editFocusIndex === 7 && (key.name === "left" || key.name === "right" || key.name === "j" || key.name === "k" || key.name === "space")) {
+        setEditTls((v) => !v)
       }
 
       return
@@ -697,15 +710,28 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
             />
           </box>
 
+          {/* TLS */}
+          <box flexDirection="row" gap={1}>
+            <text width={11} fg={editFocusIndex === 7 ? "#7aa2f7" : "#565f89"}>
+              TLS/SSL
+            </text>
+            <box width={30} flexDirection="row" gap={1}>
+              <text fg={editFocusIndex === 7 ? "#1a1b26" : "#a9b1d6"} bg={editFocusIndex === 7 ? "#7aa2f7" : "#292e42"}>
+                {editTls ? " Enabled " : " Disabled "}
+              </text>
+              <text fg="#565f89">(Space/Enter)</text>
+            </box>
+          </box>
+
           {/* Save button */}
           <box flexDirection="row" gap={1} marginTop={1}>
             <text width={11}>{" "}</text>
             <box
               width={26}
-              backgroundColor={editFocusIndex === 7 ? "#7aa2f7" : "#292e42"}
+              backgroundColor={editFocusIndex === 8 ? "#7aa2f7" : "#292e42"}
               justifyContent="center"
             >
-              <text fg={editFocusIndex === 7 ? "#1a1b26" : "#a9b1d6"}> Save </text>
+              <text fg={editFocusIndex === 8 ? "#1a1b26" : "#a9b1d6"}> Save </text>
             </box>
           </box>
 
