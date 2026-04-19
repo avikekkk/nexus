@@ -14,6 +14,7 @@ import { Toast } from "./components/layout/Toast.tsx"
 import { CommandPalette, type CommandItem } from "./components/layout/CommandPalette.tsx"
 import { QueryDatabasePicker, type QueryDatabaseOption } from "./components/layout/QueryDatabasePicker.tsx"
 import { emitPaste } from "./state/paste.ts"
+import type { DbType } from "./db/types.ts"
 
 export type FocusZone = "sidebar" | "main" | "detail" | "querylog"
 
@@ -22,7 +23,7 @@ const ZONES: FocusZone[] = ["sidebar", "main", "detail", "querylog"]
 interface DetailState {
   tabId: string
   tabLabel: string
-  dbType: "mongo" | "mysql" | "postgres" | "redis"
+  dbType: DbType
   cell: SelectedCell
 }
 

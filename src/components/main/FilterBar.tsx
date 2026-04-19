@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useKeyboard } from "@opentui/react"
 import type { DbType } from "../../db/types.ts"
-import { parseMongoFilter, parseMySQLQuery, validateRedisPattern } from "../../utils/queryParser.ts"
+import { parseElasticSearchFilter, parseMongoFilter, parseMySQLQuery, validateRedisPattern } from "../../utils/queryParser.ts"
 import { deleteWordBackward, getTextInput, isDeleteWordKey, isSubmitKey, normalizeTextInput } from "../../utils/keyInput.ts"
 import { subscribePaste } from "../../state/paste.ts"
 
@@ -186,7 +186,12 @@ export function FilterBar({
         const result = validateRedisPattern(input)
         return result.error
       }
+      case "elasticsearch": {
+        const result = parseElasticSearchFilter(input)
+        return result.error
+      }
     }
+    return null
   }, [dbType])
 
   // Validate on input change (debounced effect)

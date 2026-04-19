@@ -1,9 +1,11 @@
+import { elasticsearchCompletionProvider } from "./providers/elasticsearch.ts"
 import { mongoCompletionProvider } from "./providers/mongo.ts"
 import { mysqlCompletionProvider } from "./providers/mysql.ts"
 import { redisCompletionProvider } from "./providers/redis.ts"
 import type { CompletionContext, CompletionProvider, CompletionResult } from "./types.ts"
 
 const providerByDbType: Record<CompletionContext["dbType"], CompletionProvider> = {
+  elasticsearch: elasticsearchCompletionProvider,
   mongo: mongoCompletionProvider,
   mysql: mysqlCompletionProvider,
   postgres: mysqlCompletionProvider,

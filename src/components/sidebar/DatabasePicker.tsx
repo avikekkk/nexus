@@ -89,6 +89,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   const [editUrlError, setEditUrlError] = useState("")
 
   const DB_TYPES: { name: string; value: DbType }[] = [
+    { name: "Elasticsearch", value: "elasticsearch" },
     { name: "MongoDB", value: "mongo" },
     { name: "MySQL", value: "mysql" },
     { name: "Postgres", value: "postgres" },
