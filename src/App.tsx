@@ -22,7 +22,7 @@ const ZONES: FocusZone[] = ["sidebar", "main", "detail", "querylog"]
 interface DetailState {
   tabId: string
   tabLabel: string
-  dbType: "mongo" | "mysql" | "redis"
+  dbType: "mongo" | "mysql" | "postgres" | "redis"
   cell: SelectedCell
 }
 

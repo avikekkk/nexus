@@ -4,6 +4,7 @@ import { DEFAULT_PORTS } from "./types.ts"
 const VALID_SCHEMES: Record<DbType, string[]> = {
   mongo: ["mongodb", "mongodb+srv"],
   mysql: ["mysql"],
+  postgres: ["postgres", "postgresql"],
   redis: ["redis", "rediss"],
 }
 

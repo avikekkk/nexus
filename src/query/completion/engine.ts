@@ -6,6 +6,7 @@ import type { CompletionContext, CompletionProvider, CompletionResult } from "./
 const providerByDbType: Record<CompletionContext["dbType"], CompletionProvider> = {
   mongo: mongoCompletionProvider,
   mysql: mysqlCompletionProvider,
+  postgres: mysqlCompletionProvider,
   redis: redisCompletionProvider,
 }
 

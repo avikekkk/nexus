@@ -6,6 +6,7 @@
 
 [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)](#)
 [![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)](#)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](#)
 [![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](#)
 
 ![Nexus Showcase](assets/showcase.gif)
@@ -25,7 +26,7 @@
 
 ## Features
 
-- **Multi-database support** — MongoDB, MySQL, and Redis from a single interface
+- **Multi-database support** — MongoDB, MySQL, PostgreSQL, and Redis from a single interface
 - **Tree-based navigation** — browse connections, databases, and collections/tables in a sidebar
 - **Interactive data table** — virtual-scrolled table with syntax-highlighted values and type coloring
 - **Tab system** — explore multiple collections simultaneously with a tabbed interface

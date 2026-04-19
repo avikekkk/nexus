@@ -22,6 +22,33 @@ interface DatabasePickerProps {
 const SEARCH_INITIAL_LIMIT = 200
 const SEARCH_DEBOUNCE_MS = 300
 
+function wrapDbTypeRows(types: { name: string; value: DbType }[], maxWidth: number): { name: string; value: DbType }[][] {
+  const rows: { name: string; value: DbType }[][] = []
+  let currentRow: { name: string; value: DbType }[] = []
+  let currentWidth = 0
+
+  for (const type of types) {
+    const pillWidth = type.name.length + 2
+    const nextWidth = currentRow.length === 0 ? pillWidth : currentWidth + 1 + pillWidth
+
+    if (currentRow.length > 0 && nextWidth > maxWidth) {
+      rows.push(currentRow)
+      currentRow = [type]
+      currentWidth = pillWidth
+      continue
+    }
+
+    currentRow.push(type)
+    currentWidth = nextWidth
+  }
+
+  if (currentRow.length > 0) {
+    rows.push(currentRow)
+  }
+
+  return rows
+}
+
 export function DatabasePicker({ connectionId, connectionName, database, mode = "select", width: _width, left, top, onClose }: DatabasePickerProps) {
   const { state, setVisibleDatabases, openCollection, updateConnection, getDriver, log } = useApp()
 
@@ -63,8 +90,10 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   const DB_TYPES: { name: string; value: DbType }[] = [
     { name: "MongoDB", value: "mongo" },
     { name: "MySQL", value: "mysql" },
+    { name: "Postgres", value: "postgres" },
     { name: "Redis", value: "redis" },
   ]
+  const dbTypeRows = wrapDbTypeRows(DB_TYPES, 30)
   const EDIT_FIELD_COUNT = 8
 
   const isSearch = mode === "search"
@@ -555,16 +584,20 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
             <text width={11} fg={editFocusIndex === 1 ? "#7aa2f7" : "#565f89"}>
               Type
             </text>
-            <box flexDirection="row" gap={1} width={30}>
-              {DB_TYPES.map((t) => (
-                <text
-                  key={t.value}
-                  fg={editDbType === t.value ? "#1a1b26" : "#a9b1d6"}
-                  bg={editDbType === t.value ? "#7aa2f7" : "#292e42"}
-                >
-                  {" "}
-                  {t.name}{" "}
-                </text>
+            <box flexDirection="column" width={30}>
+              {dbTypeRows.map((row, rowIndex) => (
+                <box key={`type-row-${rowIndex}`} flexDirection="row" gap={1}>
+                  {row.map((t) => (
+                    <text
+                      key={t.value}
+                      fg={editDbType === t.value ? "#1a1b26" : "#a9b1d6"}
+                      bg={editDbType === t.value ? "#7aa2f7" : "#292e42"}
+                    >
+                      {" "}
+                      {t.name}{" "}
+                    </text>
+                  ))}
+                </box>
               ))}
             </box>
           </box>

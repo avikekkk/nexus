@@ -533,7 +533,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Fetch collections for a database
           const conn = state.connections.find((c) => c.config.id === connectionId)
           const dbType = conn?.config.type ?? "unknown"
-          const itemType = dbType === "mysql" ? "tables" : dbType === "redis" ? "keys" : "collections"
+          const itemType = dbType === "mysql" || dbType === "postgres" ? "tables" : dbType === "redis" ? "keys" : "collections"
           log("info", "connection", `Fetching ${itemType} from database: ${database}...`)
           const listCollections = driver.listCollectionsPage
             ? driver.listCollectionsPage(database)
@@ -579,7 +579,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (connectionId: string, database: string, collection: string) => {
       const conn = state.connections.find((c) => c.config.id === connectionId)
       const dbType = conn?.config.type ?? "unknown"
-      const itemName = dbType === "mysql" ? "table" : dbType === "redis" ? "keys" : "collection"
+      const itemName = dbType === "mysql" || dbType === "postgres" ? "table" : dbType === "redis" ? "keys" : "collection"
       log("info", "connection", `Opened ${itemName}: ${collection} in database ${database}`)
       const tabId = `${connectionId}/${database}/${collection}`
       const tab: Tab = {
@@ -661,7 +661,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!conn) return null
 
       const dbType = conn.config.type
-      const itemName = tab.kind === "query-console" ? "database" : dbType === "mysql" ? "table" : dbType === "redis" ? "keys" : "collection"
+      const itemName = tab.kind === "query-console" ? "database" : dbType === "mysql" || dbType === "postgres" ? "table" : dbType === "redis" ? "keys" : "collection"
 
       const tabDataEntry = state.tabData.get(tabId)
       const limit = TABLE_PAGE_SIZE
@@ -792,7 +792,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (database && driver?.listCollectionsPage && nextCursor) {
         const existingChildren = state.treeChildren.get(treeNodeId) ?? []
-        const itemType = conn?.config.type === "redis" ? "keys" : "collections"
+        const itemType = conn?.config.type === "redis" ? "keys" : conn?.config.type === "mysql" || conn?.config.type === "postgres" ? "tables" : "collections"
 
         dispatch({ type: "TREE_SET_LOADING", nodeId: treeNodeId, loading: true })
 

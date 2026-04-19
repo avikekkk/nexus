@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mongoCompletionProvider } from "./mongo.ts"
 import { mysqlCompletionProvider } from "./mysql.ts"
 import { rankCompletionSuggestions } from "../ranking.ts"
+import { getCompletions } from "../engine.ts"
 import type { CompletionContext, CompletionSuggestion } from "../types.ts"
 
 function baseContext(overrides: Partial<CompletionContext>): CompletionContext {
@@ -72,6 +73,16 @@ describe("mysql completion", () => {
 
     expect(result).not.toBeNull()
     expect(result?.items[0]?.label).toBe("name")
+  })
+})
+
+describe("postgres completion", () => {
+  test("uses SQL completion provider", () => {
+    const query = "SELECT * FROM us"
+    const result = getCompletions(baseContext({ query, cursor: query.length, dbType: "postgres" }))
+
+    expect(result).not.toBeNull()
+    expect(result?.items[0]?.label).toBe("users")
   })
 })
 

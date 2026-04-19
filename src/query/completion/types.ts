@@ -9,7 +9,7 @@ export interface CompletionSchema {
 export interface CompletionContext {
   query: string
   cursor: number
-  dbType: "mongo" | "mysql" | "redis"
+  dbType: "mongo" | "mysql" | "postgres" | "redis"
   database: string
   schema: CompletionSchema
 }

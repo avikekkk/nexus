@@ -8,6 +8,7 @@ export const DB_TYPE_ICONS: Record<DbType, string> = {
   mongo: "\ue7a4", // nf-dev-mongodb_word_mark
   redis: "\ue76d", // nf-dev-redis (cube logo)
   mysql: "\ue704", // nf-dev-mysql (dolphin logo)
+  postgres: "\ue76e", // nf-dev-postgresql
 }
 
 /**
@@ -17,6 +18,7 @@ export const DB_TYPE_COLORS: Record<DbType, string> = {
   mongo: "#9ece6a", // Green (MongoDB brand)
   redis: "#f7768e", // Red (Redis brand)
   mysql: "#7aa2f7", // Blue (MySQL brand)
+  postgres: "#7dcfff", // Cyan (PostgreSQL-like)
 }
 
 /**

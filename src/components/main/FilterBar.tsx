@@ -177,7 +177,8 @@ export function FilterBar({
         const result = parseMongoFilter(input)
         return result.error
       }
-      case "mysql": {
+      case "mysql":
+      case "postgres": {
         const result = parseMySQLQuery(input)
         return result.error
       }

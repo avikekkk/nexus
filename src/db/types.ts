@@ -1,4 +1,4 @@
-export type DbType = "mongo" | "mysql" | "redis"
+export type DbType = "mongo" | "mysql" | "postgres" | "redis"
 
 export interface ConnectionConfig {
   id: string
@@ -101,5 +101,6 @@ export interface ConnectionState {
 export const DEFAULT_PORTS: Record<DbType, number> = {
   mongo: 27017,
   mysql: 3306,
+  postgres: 5432,
   redis: 6379,
 }
