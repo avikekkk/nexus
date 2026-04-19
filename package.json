@@ -25,6 +25,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@elastic/elasticsearch": "8",
     "@napi-rs/keyring": "^1.2.0",
     "@opentui/core": "^0.1.87",
     "@opentui/react": "^0.1.87",
