@@ -62,8 +62,8 @@ bun dev
 
 ## Roadmap
 
-- [ ] Detail panel & inline editing
-- [ ] Multiple View options (json, text, tree etc.)
-- [ ] Command palette with fuzzy search
-- [ ] Query executor and auto completions
-- [ ] Loading states, error handling & polish
+- [x] Detail panel & inline editing
+- [x] Command palette with fuzzy search
+- [x] Query executor and auto completions
+- [x] Loading states, error handling & polish
+- [ ] Multiple View options (json, text, tree etc.) - Not considering it right now
