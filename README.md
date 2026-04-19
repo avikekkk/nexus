@@ -47,7 +47,7 @@
 
 ### Install & Run
 
-- Release binaries will be available soon.
+- Release binaries are available in the [releases tab](https://github.com/rshero/nexus/releases/)
 
 ```bash
 bun install
