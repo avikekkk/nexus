@@ -48,7 +48,7 @@ function wrapDbTypeRows(types: { name: string; value: DbType }[], maxWidth: numb
   return rows
 }
 
-const FIELD_COUNT = 8
+const FIELD_COUNT = 9
 
 type FormField = "name" | "url" | "host" | "port" | "username" | "password"
 
@@ -60,12 +60,14 @@ interface FormState {
   port: string
   username: string
   password: string
+  tls: boolean
   focusIndex: number
   urlError: string
 }
 
 type FormAction =
   | { type: "setField"; field: FormField; value: string }
+  | { type: "setTls"; value: boolean }
   | { type: "setDbType"; value: DbType; updateDefaultPort: boolean }
   | { type: "setFocusIndex"; value: number }
   | {
@@ -76,6 +78,7 @@ type FormAction =
         port?: string
         username?: string
         password?: string
+        tls?: boolean
       }
     }
 
@@ -88,6 +91,7 @@ function buildInitialState(existingConfig?: ConnectionConfig): FormState {
     port: String(existingConfig?.port ?? DEFAULT_PORTS.mongo),
     username: existingConfig?.username ?? "",
     password: existingConfig?.password ?? "",
+    tls: existingConfig?.tls ?? false,
     focusIndex: 0,
     urlError: "",
   }
@@ -97,6 +101,8 @@ function reducer(state: FormState, action: FormAction): FormState {
   switch (action.type) {
     case "setField":
       return { ...state, [action.field]: action.value }
+    case "setTls":
+      return { ...state, tls: action.value }
     case "setDbType":
       return {
         ...state,
@@ -113,6 +119,7 @@ function reducer(state: FormState, action: FormAction): FormState {
         port: action.payload.port ?? state.port,
         username: action.payload.username ?? state.username,
         password: action.payload.password ?? state.password,
+        tls: action.payload.tls ?? state.tls,
       }
     default:
       return state
@@ -122,7 +129,7 @@ function reducer(state: FormState, action: FormAction): FormState {
 export function ConnectionForm({ left, top, editMode = false, existingConfig, onSubmit, onCancel }: ConnectionFormProps) {
   const [state, dispatch] = useReducer(reducer, existingConfig, buildInitialState)
 
-  const { name, dbType, url, host, port, username, password, focusIndex, urlError } = state
+  const { name, dbType, url, host, port, username, password, tls, focusIndex, urlError } = state
   const hasUrl = url.trim().length > 0
 
   useEffect(() => {
@@ -146,6 +153,7 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
         port: String(parsed.port),
         username: parsed.username ?? "",
         password: parsed.password ?? "",
+        tls: parsed.tls,
       },
     })
   }, [url, dbType, hasUrl])
@@ -177,8 +185,14 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
     }
 
     if (key.name === "return") {
-      debug(`[ConnectionForm] enter pressed: focusIndex=${focusIndex}, expected=7, match=${focusIndex === 7}`)
+      debug(`[ConnectionForm] enter pressed: focusIndex=${focusIndex}, expected=8, match=${focusIndex === 8}`)
+
       if (focusIndex === 7) {
+        dispatch({ type: "setTls", value: !tls })
+        return
+      }
+
+      if (focusIndex === 8) {
         if (hasUrl && urlError) {
           debug(`[ConnectionForm] blocked: URL has error: "${urlError}"`)
           return
@@ -191,6 +205,7 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
           port: parseInt(port, 10) || DEFAULT_PORTS[dbType],
           username: username || undefined,
           password: password || undefined,
+          tls,
           url: hasUrl ? url.trim() : undefined,
         }
         debug(`[ConnectionForm] calling onSubmit with:`, JSON.stringify(config))
@@ -206,6 +221,11 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
       const next = DB_TYPES[nextIdx]!
 
       dispatch({ type: "setDbType", value: next.value, updateDefaultPort: !hasUrl })
+      return
+    }
+
+    if (focusIndex === 7 && (key.name === "left" || key.name === "right" || key.name === "j" || key.name === "k" || key.name === "space")) {
+      dispatch({ type: "setTls", value: !tls })
     }
   })
 
@@ -222,7 +242,7 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
       left={left ?? 2}
       top={top ?? 1}
       width={52}
-      height={editMode ? 21 : 19}
+      height={editMode ? 22 : 20}
       flexDirection="column"
       border
       borderStyle="rounded"
@@ -361,10 +381,22 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
           />
         </box>
 
+        <box flexDirection="row" gap={1}>
+          <text width={labelWidth} fg={focusIndex === 7 ? activeLabelFg : labelFg}>
+            TLS/SSL
+          </text>
+          <box width={inputWidth} flexDirection="row" gap={1}>
+            <text fg={focusIndex === 7 ? "#1a1b26" : "#a9b1d6"} bg={focusIndex === 7 ? "#7aa2f7" : "#292e42"}>
+              {tls ? " Enabled " : " Disabled "}
+            </text>
+            <text fg="#565f89">(Space/Enter to toggle)</text>
+          </box>
+        </box>
+
         <box flexDirection="row" gap={1} marginTop={1}>
           <text width={labelWidth}>{" "}</text>
-          <box width={inputWidth} backgroundColor={focusIndex === 7 ? "#7aa2f7" : "#292e42"} justifyContent="center">
-            <text fg={focusIndex === 7 ? "#1a1b26" : "#a9b1d6"}> Save Connection </text>
+          <box width={inputWidth} backgroundColor={focusIndex === 8 ? "#7aa2f7" : "#292e42"} justifyContent="center">
+            <text fg={focusIndex === 8 ? "#1a1b26" : "#a9b1d6"}> Save Connection </text>
           </box>
         </box>
       </box>
