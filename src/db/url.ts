@@ -2,6 +2,7 @@ import type { DbType } from "./types.ts"
 import { DEFAULT_PORTS } from "./types.ts"
 
 const VALID_SCHEMES: Record<DbType, string[]> = {
+  elasticsearch: ["http", "https"],
   mongo: ["mongodb", "mongodb+srv"],
   mysql: ["mysql"],
   postgres: ["postgres", "postgresql"],

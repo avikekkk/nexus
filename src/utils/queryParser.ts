@@ -1,5 +1,10 @@
 import { ObjectId } from "mongodb"
 
+export interface ElasticSearchFilterResult {
+  query: Record<string, unknown> | null
+  error: string | null
+}
+
 export interface MongoFilterResult {
   filter: Record<string, unknown> | null
   error: string | null
@@ -184,6 +189,68 @@ export function validateRedisPattern(input: string): RedisPatternResult {
   }
 
   return { valid: true, pattern: trimmed, error: null }
+}
+
+/**
+ * Parse Elasticsearch query from string input.
+ * Supports:
+ *   - Full search body: { "query": { "match": { "field": "value" } }, "size": 10 }
+ *   - Query DSL directly: { "match": { "field": "value" } } or { "bool": { ... } }
+ *   - Simple filter object: { "status": "active" } → converted to match queries
+ */
+export function parseElasticSearchFilter(input: string): ElasticSearchFilterResult {
+  if (!input || input.trim() === "") {
+    return { query: { match_all: {} }, error: null }
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(input)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { query: null, error: `Invalid JSON: ${msg}` }
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { query: null, error: "Query must be a JSON object" }
+  }
+
+  const record = parsed as Record<string, unknown>
+
+  // If it has a "query" key, treat as full search body and extract the query
+  if ("query" in record && typeof record.query === "object" && record.query !== null) {
+    return { query: record.query as Record<string, unknown>, error: null }
+  }
+
+  // If it contains known ES query DSL operators, use directly
+  const esQueryOperators = [
+    "match", "match_phrase", "match_all", "multi_match",
+    "term", "terms", "wildcard", "prefix", "regexp",
+    "bool", "exists", "ids", "range", "fuzzy",
+    "function_score", "simple_query_string", "query_string",
+  ]
+  const hasEsOperator = Object.keys(record).some((key) => esQueryOperators.includes(key))
+  if (hasEsOperator) {
+    return { query: record, error: null }
+  }
+
+  // Otherwise, treat as a simple filter object and convert to match queries
+  const must: Record<string, unknown>[] = []
+  for (const [key, value] of Object.entries(record)) {
+    if (key === "_id") {
+      must.push({ term: { _id: value } })
+    } else {
+      must.push({ match: { [key]: value } })
+    }
+  }
+
+  if (must.length === 0) {
+    return { query: { match_all: {} }, error: null }
+  }
+  if (must.length === 1) {
+    return { query: must[0]!, error: null }
+  }
+  return { query: { bool: { must } }, error: null }
 }
 
 /**
