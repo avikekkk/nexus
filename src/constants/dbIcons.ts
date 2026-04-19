@@ -5,7 +5,7 @@ import type { DbType, ConnectionStatus } from "../db/types.ts"
  * Requires a Nerd Font to be installed (e.g., JetBrains Mono Nerd Font)
  */
 export const DB_TYPE_ICONS: Record<DbType, string> = {
-  elasticsearch: "\uf0eb", // nf-dev-elasticsearch
+  elasticsearch: "\ue7ca", // nf-dev-elasticsearch
   mongo: "\ue7a4", // nf-dev-mongodb_word_mark
   redis: "\ue76d", // nf-dev-redis (cube logo)
   mysql: "\ue704", // nf-dev-mysql (dolphin logo)
