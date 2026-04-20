@@ -10,7 +10,9 @@
 [![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](#)
 [![Elastic](https://img.shields.io/badge/-ElasticSearch-005571?style=flat&logo=elasticsearch)](#)
 
-![Nexus Showcase](assets/showcase.mp4)
+<p align="center">
+  <video alt="nexus showcase" src="assets/showcase.mp4" />
+</p>
 
 ```
 ╭─ Connections ─────╮╭─ [users] [orders] [keys:*] ──────────────────╮
