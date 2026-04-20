@@ -10,13 +10,7 @@
 [![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](#)
 [![Elastic](https://img.shields.io/badge/-ElasticSearch-005571?style=flat&logo=elasticsearch)](#)
 
-<p align="center">
-  <video alt="nexus showcase" 
-    src="https://files.catbox.moe/ht3ibt.mp4"
-    preload="metadata"
-    width="9000"
-  ></video>
-</p>
+![Nexus Showcase](assets/showcase.gif)
 
 ```
 ╭─ Connections ─────╮╭─ [users] [orders] [keys:*] ──────────────────╮
