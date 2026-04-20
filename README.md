@@ -10,7 +10,7 @@
 [![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](#)
 [![Elastic](https://img.shields.io/badge/-ElasticSearch-005571?style=flat&logo=elasticsearch)](#)
 
-![Nexus Showcase](assets/showcase.gif)
+![Nexus Showcase](assets/showcase.mp4)
 
 ```
 ╭─ Connections ─────╮╭─ [users] [orders] [keys:*] ──────────────────╮
