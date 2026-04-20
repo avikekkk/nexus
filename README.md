@@ -11,7 +11,7 @@
 [![Elastic](https://img.shields.io/badge/-ElasticSearch-005571?style=flat&logo=elasticsearch)](#)
 
 <p align="center">
-  <video alt="nexus showcase" src="assets/showcase.mp4" />
+  <video alt="nexus showcase" src="https://raw.githubusercontent.com/rshero/nexus/refs/heads/main/assets/showcase.mp4" />
 </p>
 
 ```
