@@ -27,7 +27,7 @@ export interface TabData {
   customQuery: boolean // Whether user entered custom query vs using builder
 }
 
-interface AppState {
+export interface AppState {
   connections: ConnectionState[]
   activeConnectionId: string | null
   treeExpanded: Set<string>
@@ -49,7 +49,7 @@ const MAX_VISIBLE_DATABASES = 10
 const MAX_ROWS_PER_TAB_CACHE = 500
 const TABLE_PAGE_SIZE = 20
 
-type AppAction =
+export type AppAction =
   | { type: "SET_CONNECTIONS"; configs: ConnectionConfig[] }
   | { type: "ADD_CONNECTION"; config: ConnectionConfig }
   | { type: "UPDATE_CONNECTION"; id: string; config: Omit<ConnectionConfig, "id"> }
@@ -116,7 +116,7 @@ function cloneMap<K, V>(m: Map<K, V>): Map<K, V> {
 
 const MAX_CONSOLE_ENTRIES = 200
 
-function reducer(state: AppState, action: AppAction): AppState {
+export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case "SET_CONNECTIONS":
       return {
@@ -135,8 +135,16 @@ function reducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         connections: state.connections.map((c) =>
-          c.config.id === action.id ? { ...c, config: { ...action.config, id: action.id } } : c
+          c.config.id === action.id
+            ? {
+                ...c,
+                config: { ...action.config, id: action.id },
+                status: "disconnected",
+                error: undefined,
+              }
+            : c
         ),
+        activeConnectionId: state.activeConnectionId === action.id ? null : state.activeConnectionId,
       }
     case "REMOVE_CONNECTION":
       return {
@@ -353,7 +361,7 @@ export async function disconnectAllDrivers() {
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, {
+  const [state, dispatch] = useReducer(appReducer, {
     connections: [],
     activeConnectionId: null,
     treeExpanded: new Set<string>(),
@@ -453,9 +461,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateConnection = (id: string, config: Omit<ConnectionConfig, "id">) => {
     const conn = state.connections.find((c) => c.config.id === id)
     const oldName = conn?.config.name ?? id
+
+    const existingDriver = driverMap.get(id)
+    if (existingDriver) {
+      existingDriver.disconnect().catch(() => {})
+      driverMap.delete(id)
+    }
+
     dispatch({ type: "UPDATE_CONNECTION", id, config })
+    dispatch({ type: "TREE_CLEAR_CONNECTION", connectionId: id })
     log("info", "system", `Updated connection "${oldName}" to "${config.name}"`)
-    
+
     // Persist to disk
     const allConfigs = state.connections.map((c) => {
       if (c.config.id === id) {
