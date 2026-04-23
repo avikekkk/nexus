@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useKeyboard } from "@opentui/react"
 import { getTextInput, isSubmitKey, normalizeTextInput } from "../../utils/keyInput.ts"
 import { subscribePaste } from "../../state/paste.ts"
+import { CenteredModal, createPasteHandler } from "./CenteredModal.tsx"
 
 export interface QueryDatabaseOption {
   key: string
@@ -103,71 +104,49 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
 
   useEffect(() => subscribePaste(applyPastedText), [applyPastedText])
 
-  const handlePaste = (event: { text: string; preventDefault?: () => void; stopPropagation?: () => void }) => {
-    applyPastedText(event.text)
-    event.preventDefault?.()
-    event.stopPropagation?.()
-  }
+  const handlePaste = createPasteHandler(applyPastedText)
 
   if (!visible) return null
 
-  const panelWidth = Math.min(76, Math.max(48, width - 10))
   const panelHeight = Math.min(18, Math.max(10, height - 8))
-  const left = Math.max(0, Math.floor((width - panelWidth) / 2))
-  const top = Math.max(0, Math.floor((height - panelHeight) / 2))
 
   return (
-    <>
-      <box position="absolute" left={0} top={0} width="100%" height="100%" backgroundColor="#000000" opacity={0.6} zIndex={80} />
-      <box
-        position="absolute"
-        left={left}
-        top={top}
-        onPaste={handlePaste}
-        width={panelWidth}
-        height={panelHeight}
-        border
-        borderStyle="rounded"
-        borderColor="#7aa2f7"
-        backgroundColor="#1a1b26"
-        title=" Pick a database to query "
-        zIndex={90}
-        flexDirection="column"
-      >
-        <box height={1} paddingX={1}>
-          {searchMode ? (
-            query ? <text fg="#c0caf5">Search: {query}</text> : <text fg="#c0caf5">Search: </text>
-          ) : (
-            <text fg="#565f89">Press / to search databases</text>
-          )}
-        </box>
-        <box height={1} paddingX={1}>
-          <text fg="#414868">{"─".repeat(200)}</text>
-        </box>
-        <box flexGrow={1} flexDirection="column" paddingX={1}>
-          {filtered.length === 0 ? (
-            <text fg="#565f89">No databases found</text>
-          ) : (
-            filtered.slice(0, panelHeight - 4).map((option, idx) => {
-              const active = idx === selected
-              return (
-                <box
-                  key={option.key}
-                  flexDirection="row"
-                  justifyContent="space-between"
-                  backgroundColor={active ? "#283457" : undefined}
-                >
-                  <text fg={active ? "#c0caf5" : "#a9b1d6"}>{option.database}</text>
-                  <text fg="#565f89">[{option.connectionName}]</text>
-                </box>
-              )
-            })
-          )}
-        </box>
-        <box height={1} paddingX={1}>
-          <text fg="#414868">[Enter] Open query tab  [/] Search  [Esc] {searchMode ? "Exit search" : "Close"}</text>
-        </box>
+    <CenteredModal
+      width={width}
+      height={height}
+      minWidth={48}
+      maxWidth={76}
+      minHeight={10}
+      maxHeight={18}
+      widthPadding={10}
+      heightPadding={8}
+      title="Pick a database to query"
+      onPaste={handlePaste}
+    >
+      <box height={1} paddingX={1}>
+        {searchMode ? query ? <text fg="#c0caf5">Search: {query}</text> : <text fg="#c0caf5">Search: </text> : <text fg="#565f89">Press / to search databases</text>}
       </box>
-    </>
+      <box height={1} paddingX={1}>
+        <text fg="#414868">{"─".repeat(200)}</text>
+      </box>
+      <box flexGrow={1} flexDirection="column" paddingX={1}>
+        {filtered.length === 0 ? (
+          <text fg="#565f89">No databases found</text>
+        ) : (
+          filtered.slice(0, panelHeight - 4).map((option, idx) => {
+            const active = idx === selected
+            return (
+              <box key={option.key} flexDirection="row" justifyContent="space-between" backgroundColor={active ? "#283457" : undefined}>
+                <text fg={active ? "#c0caf5" : "#a9b1d6"}>{option.database}</text>
+                <text fg="#565f89">[{option.connectionName}]</text>
+              </box>
+            )
+          })
+        )}
+      </box>
+      <box height={1} paddingX={1}>
+        <text fg="#414868">[Enter] Open query tab  [/] Search  [Esc] {searchMode ? "Exit search" : "Close"}</text>
+      </box>
+    </CenteredModal>
   )
 }

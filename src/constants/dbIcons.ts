@@ -36,7 +36,7 @@ export const STATUS_INDICATORS: Record<ConnectionStatus, string> = {
 /**
  * Status colors
  */
-export const STATUS_COLORS: Record<ConnectionStatus, string> = {
+const STATUS_COLORS: Record<ConnectionStatus, string> = {
   disconnected: "#565f89",
   connecting: "#e0af68",
   connected: "#9ece6a",

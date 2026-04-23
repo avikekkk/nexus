@@ -1,4 +1,4 @@
-export interface AutoPairResult {
+interface AutoPairResult {
   value: string
   cursor: number
   handled: boolean

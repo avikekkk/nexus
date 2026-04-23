@@ -9,14 +9,14 @@ export interface ConsoleEntry {
   message: string
 }
 
-export const LOG_COLORS: Record<LogLevel, string> = {
+const LOG_COLORS: Record<LogLevel, string> = {
   info: "#7aa2f7",
   success: "#9ece6a",
   warning: "#e0af68",
   error: "#f7768e",
 }
 
-export const SOURCE_COLORS: Record<LogSource, string> = {
+const SOURCE_COLORS: Record<LogSource, string> = {
   connection: "#bb9af7",
   query: "#7dcfff",
   system: "#565f89",
@@ -25,7 +25,7 @@ export const SOURCE_COLORS: Record<LogSource, string> = {
 let nextId = 1
 const MAX_ENTRIES = 200
 
-export function createConsoleState() {
+function createConsoleState() {
   const entries: ConsoleEntry[] = []
 
   function add(level: LogLevel, source: LogSource, message: string): ConsoleEntry {

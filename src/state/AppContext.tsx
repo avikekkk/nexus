@@ -7,7 +7,7 @@ import type { ConsoleEntry, LogLevel, LogSource } from "./console.ts"
 import { debug } from "../utils/debug.ts"
 import { formatConnectionError } from "../utils/errorFormatter.ts"
 
-export interface Tab {
+interface Tab {
   id: string
   label: string
   connectionId: string
@@ -16,7 +16,7 @@ export interface Tab {
   kind?: "collection" | "query-console" | "query-result"
 }
 
-export interface TabData {
+interface TabData {
   result: QueryResult | null
   loading: boolean
   error: string | null

@@ -7,7 +7,7 @@ interface KeyLike {
   shift?: boolean
 }
 
-export interface TextInputOptions {
+interface TextInputOptions {
   allowNewline?: boolean
 }
 

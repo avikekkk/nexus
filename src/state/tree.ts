@@ -1,6 +1,6 @@
 import type { RedisKeyType } from "../db/types.ts"
 
-export type TreeNodeType = "connection" | "database" | "collection"
+type TreeNodeType = "connection" | "database" | "collection"
 
 export interface TreeNode {
   id: string
@@ -14,14 +14,14 @@ export interface TreeNode {
   redisType?: RedisKeyType
 }
 
-export interface TreeState {
+interface TreeState {
   expanded: Set<string>
   selected: string | null
   loading: Set<string>
   children: Map<string, TreeNode[]>
 }
 
-export function createTreeState(): TreeState {
+function createTreeState(): TreeState {
   return {
     expanded: new Set(),
     selected: null,

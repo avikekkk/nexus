@@ -1,23 +1,23 @@
 import { ObjectId } from "mongodb"
 
-export interface ElasticSearchFilterResult {
+interface ElasticSearchFilterResult {
   query: Record<string, unknown> | null
   error: string | null
 }
 
-export interface MongoFilterResult {
+interface MongoFilterResult {
   filter: Record<string, unknown> | null
   error: string | null
 }
 
-export interface MySQLQueryResult {
+interface MySQLQueryResult {
   where: string
   orderBy: string
   limit: number | null
   error: string | null
 }
 
-export interface RedisPatternResult {
+interface RedisPatternResult {
   valid: boolean
   pattern: string
   error: string | null
@@ -269,27 +269,3 @@ export function sortToOrderBy(sort: Record<string, 1 | -1>): string {
   return parts.join(", ")
 }
 
-/**
- * Parse ORDER BY clause into sort object
- */
-export function orderByToSort(orderBy: string): Record<string, 1 | -1> {
-  const sort: Record<string, 1 | -1> = {}
-  if (!orderBy) return sort
-
-  const parts = orderBy.split(",")
-  for (const part of parts) {
-    const match = part.trim().match(/^(\w+)\s+(ASC|DESC)$/i)
-    if (match) {
-      const col = match[1]!
-      const dir = match[2]!.toUpperCase() === "DESC" ? -1 : 1
-      sort[col] = dir
-    } else {
-      // No direction specified, default to ASC
-      const col = part.trim().replace(/[^a-zA-Z0-9_]/g, "")
-      if (col) {
-        sort[col] = 1
-      }
-    }
-  }
-  return sort
-}

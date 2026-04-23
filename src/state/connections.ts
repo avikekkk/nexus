@@ -159,7 +159,7 @@ export async function saveConnections(connections: ConnectionConfig[]): Promise<
   await writeFile(CONFIG_FILE, JSON.stringify(stored, null, 2), "utf-8")
 }
 
-export async function deleteConnection(id: string): Promise<void> {
+async function deleteConnection(id: string): Promise<void> {
   const connections = await loadConnections()
   const filtered = connections.filter((c) => c.id !== id)
   await saveConnections(filtered)

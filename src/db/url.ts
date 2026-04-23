@@ -9,7 +9,7 @@ const VALID_SCHEMES: Record<DbType, string[]> = {
   redis: ["redis", "rediss"],
 }
 
-export interface ParsedUrl {
+interface ParsedUrl {
   host: string
   port: number
   username?: string
@@ -18,7 +18,7 @@ export interface ParsedUrl {
   tls?: boolean
 }
 
-export interface UrlValidationResult {
+interface UrlValidationResult {
   valid: boolean
   error?: string
   parsed?: ParsedUrl

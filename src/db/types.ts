@@ -35,7 +35,7 @@ export interface ColumnDef {
   nullable?: boolean
 }
 
-export interface QueryOpts {
+interface QueryOpts {
   database: string
   collection: string
   filter?: Record<string, unknown>

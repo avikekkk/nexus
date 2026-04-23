@@ -1,6 +1,6 @@
 export type CompletionKind = "database" | "collection" | "field" | "operation" | "snippet"
 
-export interface CompletionSchema {
+interface CompletionSchema {
   databases: string[]
   collections: string[]
   collectionFields: Record<string, string[]>

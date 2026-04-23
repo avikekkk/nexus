@@ -30,7 +30,7 @@ function escapeRedisGlobLiteral(value: string): string {
   return value.replace(/[\\*?\[\]]/g, "\\$&")
 }
 
-export async function buildRedisCollectionInfos(redis: Redis, keys: string[]): Promise<CollectionInfo[]> {
+async function buildRedisCollectionInfos(redis: Redis, keys: string[]): Promise<CollectionInfo[]> {
   if (keys.length === 0) return []
 
   // Pipeline TYPE commands for all keys at once

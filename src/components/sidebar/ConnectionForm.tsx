@@ -4,6 +4,7 @@ import type { ConnectionConfig, DbType } from "../../db/types.ts"
 import { DEFAULT_PORTS } from "../../db/types.ts"
 import { parseConnectionUrl } from "../../db/url.ts"
 import { debug } from "../../utils/debug.ts"
+import { wrapDbTypeRows } from "./dbTypeRows.ts"
 
 interface ConnectionFormProps {
   left?: number
@@ -23,33 +24,6 @@ const DB_TYPES: { name: string; value: DbType }[] = [
 ]
 
 const DEFAULT_DB_TYPE: DbType = DB_TYPES[0]!.value
-
-function wrapDbTypeRows(types: { name: string; value: DbType }[], maxWidth: number): { name: string; value: DbType }[][] {
-  const rows: { name: string; value: DbType }[][] = []
-  let currentRow: { name: string; value: DbType }[] = []
-  let currentWidth = 0
-
-  for (const type of types) {
-    const pillWidth = type.name.length + 2
-    const nextWidth = currentRow.length === 0 ? pillWidth : currentWidth + 1 + pillWidth
-
-    if (currentRow.length > 0 && nextWidth > maxWidth) {
-      rows.push(currentRow)
-      currentRow = [type]
-      currentWidth = pillWidth
-      continue
-    }
-
-    currentRow.push(type)
-    currentWidth = nextWidth
-  }
-
-  if (currentRow.length > 0) {
-    rows.push(currentRow)
-  }
-
-  return rows
-}
 
 const FIELD_COUNT = 9
 
