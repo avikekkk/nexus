@@ -9,7 +9,7 @@ import type {
   UpdateFieldOpts,
   UpdateFieldResult,
 } from "./types.ts"
-import { parseMongoFilter } from "../utils/queryParser.ts"
+import { parseMongoExtendedJson, parseMongoFilter } from "../utils/queryParser.ts"
 
 export function createMongoDriver(): DbDriver {
   let client: MongoClient | null = null
@@ -161,13 +161,16 @@ export function createMongoDriver(): DbDriver {
       throw new Error("Query is empty")
     }
 
-    const prefixMatch = trimmed.match(/^db\.([A-Za-z0-9_]+)(.*)$/s)
+    const collectionCallMatch = trimmed.match(/^db\.collection\s*\(\s*(["'])([A-Za-z0-9_]+)\1\s*\)(.*)$/s)
+    const directMatch = trimmed.match(/^db\.([A-Za-z0-9_]+)(.*)$/s)
+    const prefixMatch = collectionCallMatch ?? directMatch
+
     if (!prefixMatch) {
       throw new Error("Use shell-style syntax: db.collection.find({...}).limit(50)")
     }
 
-    const collection = prefixMatch[1]!
-    const suffix = prefixMatch[2] ?? ""
+    const collection = (collectionCallMatch ? collectionCallMatch[2] : directMatch?.[1]) ?? ""
+    const suffix = (collectionCallMatch ? collectionCallMatch[3] : directMatch?.[2]) ?? ""
     const calls = parseMethodCalls(suffix)
     if (calls.length === 0) {
       throw new Error("Mongo query must include an operation, e.g. db.users.find({})")
@@ -216,7 +219,7 @@ export function createMongoDriver(): DbDriver {
 
       let parsedPipeline: unknown
       try {
-        parsedPipeline = JSON.parse(firstCall.args)
+        parsedPipeline = parseMongoExtendedJson(firstCall.args)
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         throw new Error(`Aggregate parse error: ${msg}`)
@@ -240,6 +243,27 @@ export function createMongoDriver(): DbDriver {
     let limit = 50
 
     for (const call of calls.slice(1)) {
+      if (call.name === "project") {
+        if (operation !== "find" && operation !== "findOne") {
+          throw new Error(`${operation}() does not support chained project()`)
+        }
+
+        const parsedProjection = parseMongoFilter(call.args || "{}")
+        if (parsedProjection.error) {
+          throw new Error(`Projection parse error: ${parsedProjection.error}`)
+        }
+
+        projection = parsedProjection.filter ?? {}
+        continue
+      }
+
+      if (call.name === "toArray") {
+        if (call.args.trim().length > 0) {
+          throw new Error("toArray() does not accept arguments")
+        }
+        continue
+      }
+
       if (operation !== "find") {
         throw new Error(`${operation}() does not support chained ${call.name}()`)
       }

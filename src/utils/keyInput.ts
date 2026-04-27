@@ -62,24 +62,62 @@ export function getPrintableKey(key: KeyLike): string | null {
   return text && text.length === 1 ? text : null
 }
 
+function isWordChar(char: string): boolean {
+  return /[a-zA-Z0-9_]/.test(char)
+}
+
+export function moveCursorWordLeft(input: string, cursor: number): number {
+  if (!input || cursor <= 0) return 0
+
+  let pos = cursor
+
+  while (pos > 0 && /\s/.test(input[pos - 1] ?? "")) {
+    pos -= 1
+  }
+
+  if (pos > 0 && isWordChar(input[pos - 1] ?? "")) {
+    while (pos > 0 && isWordChar(input[pos - 1] ?? "")) {
+      pos -= 1
+    }
+    return pos
+  }
+
+  while (pos > 0 && !/\s/.test(input[pos - 1] ?? "") && !isWordChar(input[pos - 1] ?? "")) {
+    pos -= 1
+  }
+
+  return pos
+}
+
+export function moveCursorWordRight(input: string, cursor: number): number {
+  if (!input || cursor >= input.length) return input.length
+
+  let pos = cursor
+
+  while (pos < input.length && /\s/.test(input[pos] ?? "")) {
+    pos += 1
+  }
+
+  if (pos < input.length && isWordChar(input[pos] ?? "")) {
+    while (pos < input.length && isWordChar(input[pos] ?? "")) {
+      pos += 1
+    }
+    return pos
+  }
+
+  while (pos < input.length && !/\s/.test(input[pos] ?? "") && !isWordChar(input[pos] ?? "")) {
+    pos += 1
+  }
+
+  return pos
+}
+
 export function deleteWordBackward(input: string, cursor: number): { value: string; cursor: number } {
   if (!input || cursor <= 0) {
     return { value: input, cursor }
   }
 
-  let start = cursor
-
-  while (start > 0 && /\s/.test(input[start - 1] ?? "")) {
-    start -= 1
-  }
-
-  while (start > 0 && /[a-zA-Z0-9_]/.test(input[start - 1] ?? "")) {
-    start -= 1
-  }
-
-  if (start === cursor && start > 0) {
-    start -= 1
-  }
+  const start = moveCursorWordLeft(input, cursor)
 
   return {
     value: input.slice(0, start) + input.slice(cursor),

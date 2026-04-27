@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useKeyboard } from "@opentui/react"
-import { deleteWordBackward, getTextInput, isDeleteWordKey, isInsertNewlineKey, isSubmitKey, normalizeTextInput } from "../../utils/keyInput.ts"
+import {
+  deleteWordBackward,
+  getTextInput,
+  isDeleteWordKey,
+  isInsertNewlineKey,
+  isSubmitKey,
+  moveCursorWordLeft,
+  moveCursorWordRight,
+  normalizeTextInput,
+} from "../../utils/keyInput.ts"
 import { subscribePaste } from "../../state/paste.ts"
 import { CompletionMenu } from "../common/CompletionMenu.tsx"
 import { getCompletions } from "../../query/completion/engine.ts"
@@ -184,14 +193,14 @@ export function QueryConsole({
     }
 
     if (key.name === "left") {
-      const nextCursor = Math.max(0, cursorPos - 1)
+      const nextCursor = key.ctrl ? moveCursorWordLeft(query, cursorPos) : Math.max(0, cursorPos - 1)
       setCursorPos(nextCursor)
       refreshCompletion(query, nextCursor)
       return
     }
 
     if (key.name === "right") {
-      const nextCursor = Math.min(query.length, cursorPos + 1)
+      const nextCursor = key.ctrl ? moveCursorWordRight(query, cursorPos) : Math.min(query.length, cursorPos + 1)
       setCursorPos(nextCursor)
       refreshCompletion(query, nextCursor)
       return

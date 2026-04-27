@@ -8,6 +8,8 @@ import {
   isInsertNewlineKey,
   isShiftEnterKey,
   isSubmitKey,
+  moveCursorWordLeft,
+  moveCursorWordRight,
 } from "./keyInput.ts"
 
 describe("keyInput utils", () => {
@@ -58,5 +60,18 @@ describe("keyInput utils", () => {
     const result = deleteWordBackward("alpha beta", "alpha beta".length)
     expect(result.value).toBe("alpha ")
     expect(result.cursor).toBe("alpha ".length)
+  })
+
+  test("moveCursorWordLeft jumps to previous word boundary", () => {
+    const value = "alpha beta.gamma"
+    expect(moveCursorWordLeft(value, value.length)).toBe("alpha beta.".length)
+    expect(moveCursorWordLeft(value, "alpha beta.".length)).toBe("alpha beta".length)
+    expect(moveCursorWordLeft(value, "alpha beta".length)).toBe("alpha ".length)
+  })
+
+  test("moveCursorWordRight jumps to next word boundary", () => {
+    const value = "alpha beta.gamma"
+    expect(moveCursorWordRight(value, 0)).toBe("alpha".length)
+    expect(moveCursorWordRight(value, "alpha ".length)).toBe("alpha beta".length)
   })
 })

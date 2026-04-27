@@ -89,8 +89,9 @@ export function MainPanel({
   }, [activeTabId, fetchTabData, tabData, tabs])
 
   useEffect(() => {
-    onQueryInputFocusChange?.(isQueryConsoleTab && queryInputFocused)
-  }, [isQueryConsoleTab, queryInputFocused, onQueryInputFocusChange])
+    const hasMainTextInputFocus = (isQueryConsoleTab && queryInputFocused) || (!isQueryConsoleTab && filterBarFocused)
+    onQueryInputFocusChange?.(hasMainTextInputFocus)
+  }, [isQueryConsoleTab, queryInputFocused, filterBarFocused, onQueryInputFocusChange])
 
   useEffect(() => {
     if (!isQueryConsoleTab || !activeTab) {
@@ -379,6 +380,11 @@ export function MainPanel({
               <FilterBar
                 focused={filterBarFocused}
                 dbType={dbType}
+                database={activeTab.database}
+                collection={activeTab.collection}
+                schemaDatabases={schemaDatabases}
+                schemaCollections={schemaCollectionsFromTree}
+                schemaCollectionFields={schemaCollectionFields}
                 currentFilter={activeData.filter || ""}
                 currentSort={activeData.sort}
                 onSortChange={handleSortChange}

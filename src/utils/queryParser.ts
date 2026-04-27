@@ -23,12 +23,396 @@ interface RedisPatternResult {
   error: string | null
 }
 
-function parseMongoExtendedJson(input: string): unknown {
-  const placeholders: string[] = []
-  let normalized = input
+function isMongoIdentifierStart(char: string): boolean {
+  return /[A-Za-z_$]/.test(char)
+}
+
+function isMongoIdentifierChar(char: string): boolean {
+  return /[A-Za-z0-9_$]/.test(char)
+}
+
+function decodeSingleQuotedEscape(char: string): string {
+  switch (char) {
+    case "\\":
+      return "\\"
+    case "'":
+      return "'"
+    case '"':
+      return '"'
+    case "n":
+      return "\n"
+    case "r":
+      return "\r"
+    case "t":
+      return "\t"
+    case "b":
+      return "\b"
+    case "f":
+      return "\f"
+    case "v":
+      return "\v"
+    case "0":
+      return "\0"
+    default:
+      return char
+  }
+}
+
+function normalizeMongoSingleQuotedStrings(input: string): string {
+  let output = ""
+  let inDouble = false
+  let inSingle = false
+  let singleValue = ""
+  let escaped = false
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i]!
+
+    if (inSingle) {
+      if (escaped) {
+        singleValue += decodeSingleQuotedEscape(char)
+        escaped = false
+        continue
+      }
+
+      if (char === "\\") {
+        escaped = true
+        continue
+      }
+
+      if (char === "'") {
+        output += JSON.stringify(singleValue)
+        singleValue = ""
+        inSingle = false
+        continue
+      }
+
+      singleValue += char
+      continue
+    }
+
+    if (inDouble) {
+      output += char
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === '"') {
+        inDouble = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inDouble = true
+      output += char
+      continue
+    }
+
+    if (char === "'") {
+      inSingle = true
+      singleValue = ""
+      escaped = false
+      continue
+    }
+
+    output += char
+  }
+
+  if (inSingle) {
+    output += `'${singleValue}`
+  }
+
+  return output
+}
+
+function removeMongoTrailingCommas(input: string): string {
+  let output = ""
+  let inString: "'" | '"' | null = null
+  let escaped = false
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i]!
+
+    if (inString) {
+      output += char
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === inString) {
+        inString = null
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'") {
+      inString = char
+      output += char
+      continue
+    }
+
+    if (char === ",") {
+      let j = i + 1
+      while (j < input.length && /\s/.test(input[j]!)) {
+        j++
+      }
+
+      const next = input[j]
+      if (next === "}" || next === "]") {
+        continue
+      }
+    }
+
+    output += char
+  }
+
+  return output
+}
+
+function normalizeMongoObjectKeys(input: string): string {
+  let output = ""
+  const stack: Array<{ type: "object" | "array"; expectingKey: boolean }> = []
+  let inString: "'" | '"' | null = null
+  let escaped = false
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i]!
+
+    if (inString) {
+      output += char
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === inString) {
+        inString = null
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'") {
+      inString = char
+      output += char
+      continue
+    }
+
+    const top = stack[stack.length - 1]
+
+    if (top?.type === "object" && top.expectingKey) {
+      if (isMongoIdentifierStart(char)) {
+        let j = i + 1
+        while (j < input.length && isMongoIdentifierChar(input[j]!)) {
+          j++
+        }
+
+        let k = j
+        while (k < input.length && /\s/.test(input[k]!)) {
+          k++
+        }
+
+        if (input[k] === ":") {
+          const token = input.slice(i, j)
+          output += `"${token}"`
+          i = j - 1
+          continue
+        }
+      }
+    }
+
+    if (char === "{") {
+      stack.push({ type: "object", expectingKey: true })
+      output += char
+      continue
+    }
+
+    if (char === "[") {
+      stack.push({ type: "array", expectingKey: false })
+      output += char
+      continue
+    }
+
+    if (char === "}") {
+      stack.pop()
+      output += char
+      continue
+    }
+
+    if (char === "]") {
+      stack.pop()
+      output += char
+      continue
+    }
+
+    if (char === ":") {
+      if (top?.type === "object") {
+        top.expectingKey = false
+      }
+      output += char
+      continue
+    }
+
+    if (char === ",") {
+      if (top?.type === "object") {
+        top.expectingKey = true
+      }
+      output += char
+      continue
+    }
+
+    output += char
+  }
+
+  return output
+}
+
+function parseMongoDateValue(arg: string): Date {
+  const trimmed = arg.trim()
+  if (!trimmed) {
+    return new Date()
+  }
+
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    const normalized = normalizeMongoSingleQuotedStrings(trimmed)
+    const raw = JSON.parse(normalized)
+    if (typeof raw !== "string") {
+      throw new Error("new Date() string argument is invalid")
+    }
+    const date = new Date(raw)
+    if (Number.isNaN(date.getTime())) {
+      throw new Error("Invalid Date value")
+    }
+    return date
+  }
+
+  if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+    const numeric = Number(trimmed)
+    if (!Number.isFinite(numeric)) {
+      throw new Error("Invalid Date value")
+    }
+    return new Date(numeric)
+  }
+
+  const replacedNow = trimmed.replace(/Date\.now\s*\(\s*\)/g, String(Date.now()))
+  if (/[^0-9+\-*/().\s]/.test(replacedNow)) {
+    throw new Error("Unsupported new Date() expression")
+  }
+
+  let value: unknown
+  try {
+    value = Function(`"use strict"; return (${replacedNow})`)()
+  } catch {
+    throw new Error("Invalid new Date() expression")
+  }
+
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error("Invalid new Date() expression")
+  }
+
+  return new Date(value)
+}
+
+function replaceMongoDateConstructors(input: string, datePlaceholders: number[]): string {
+  let output = ""
+  let i = 0
+  let inString: "'" | '"' | null = null
+  let escaped = false
+
+  while (i < input.length) {
+    const char = input[i]!
+
+    if (inString) {
+      output += char
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === inString) {
+        inString = null
+      }
+      i++
+      continue
+    }
+
+    if (char === '"' || char === "'") {
+      inString = char
+      output += char
+      i++
+      continue
+    }
+
+    if (input.startsWith("new Date", i)) {
+      let head = i + "new Date".length
+      while (head < input.length && /\s/.test(input[head]!)) {
+        head++
+      }
+
+      if (input[head] !== "(") {
+        output += char
+        i++
+        continue
+      }
+
+      let depth = 1
+      let j = head + 1
+      let quote: "'" | '"' | null = null
+      let quoteEscaped = false
+
+      while (j < input.length && depth > 0) {
+        const next = input[j]!
+
+        if (quote) {
+          if (quoteEscaped) {
+            quoteEscaped = false
+          } else if (next === "\\") {
+            quoteEscaped = true
+          } else if (next === quote) {
+            quote = null
+          }
+          j++
+          continue
+        }
+
+        if (next === '"' || next === "'") {
+          quote = next
+          j++
+          continue
+        }
+
+        if (next === "(") depth++
+        if (next === ")") depth--
+        j++
+      }
+
+      if (depth !== 0) {
+        throw new Error("Unclosed new Date() expression")
+      }
+
+      const arg = input.slice(head + 1, j - 1)
+      const date = parseMongoDateValue(arg)
+      const index = datePlaceholders.push(date.getTime()) - 1
+      output += `{"$__date":"${index}"}`
+      i = j
+      continue
+    }
+
+    output += char
+    i++
+  }
+
+  return output
+}
+
+export function parseMongoExtendedJson(input: string): unknown {
+  const objectIdPlaceholders: string[] = []
+  const datePlaceholders: number[] = []
+  let normalized = normalizeMongoSingleQuotedStrings(input)
+  normalized = replaceMongoDateConstructors(normalized, datePlaceholders)
+  normalized = normalizeMongoObjectKeys(normalized)
+  normalized = removeMongoTrailingCommas(normalized)
 
   normalized = normalized.replace(/ObjectId\s*\(\s*(["'])([a-fA-F0-9]{24})\1\s*\)/g, (_match, _quote, hex: string) => {
-    const index = placeholders.push(hex) - 1
+    const index = objectIdPlaceholders.push(hex) - 1
     return `{"$__objectId":"${index}"}`
   })
 
@@ -48,11 +432,21 @@ function parseMongoExtendedJson(input: string): unknown {
     if (keys.length === 1 && keys[0] === "$__objectId") {
       const raw = record.$__objectId
       const idx = typeof raw === "string" ? Number.parseInt(raw, 10) : -1
-      const hex = idx >= 0 ? placeholders[idx] : undefined
+      const hex = idx >= 0 ? objectIdPlaceholders[idx] : undefined
       if (!hex || !ObjectId.isValid(hex)) {
         throw new Error("Invalid ObjectId value")
       }
       return new ObjectId(hex)
+    }
+
+    if (keys.length === 1 && keys[0] === "$__date") {
+      const raw = record.$__date
+      const idx = typeof raw === "string" ? Number.parseInt(raw, 10) : -1
+      const timestamp = idx >= 0 ? datePlaceholders[idx] : undefined
+      if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+        throw new Error("Invalid Date value")
+      }
+      return new Date(timestamp)
     }
 
     const next: Record<string, unknown> = {}
@@ -84,7 +478,7 @@ export function parseMongoFilter(input: string): MongoFilterResult {
     const dangerousOps = ["$where", "$function", "$accumulator"]
     const checkDangerous = (obj: unknown): boolean => {
       if (typeof obj !== "object" || obj === null) return false
-      if (obj instanceof ObjectId) return false
+      if (obj instanceof ObjectId || obj instanceof Date) return false
 
       for (const key of Object.keys(obj)) {
         if (dangerousOps.includes(key)) return true
