@@ -1,4 +1,5 @@
 import type { FocusZone } from "../../App.tsx"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 interface StatusBarProps {
   focusZone: FocusZone
@@ -7,8 +8,6 @@ interface StatusBarProps {
   width: number
 }
 
-const KEY_STYLE = "#7aa2f7"
-const DESC_STYLE = "#565f89"
 const SEP = "  "
 
 interface Shortcut {
@@ -21,6 +20,7 @@ function getShortcuts(focusZone: FocusZone, showQueryLog: boolean): Shortcut[] {
     { key: "Tab", desc: "Switch Panel" },
     { key: "Ctrl+P", desc: "Commands" },
     { key: "Ctrl+B", desc: "Toggle Sidebar" },
+    { key: "Ctrl+T", desc: "Toggle Theme" },
     { key: "`", desc: showQueryLog ? "Hide Console" : "Show Console" },
     { key: "1-4", desc: "Jump Panel" },
     { key: "Ctrl+Q", desc: "Quit" },
@@ -74,6 +74,7 @@ function fitShortcuts(shortcuts: Shortcut[], width: number): Shortcut[] {
 }
 
 export function StatusBar({ focusZone, showQueryLog, width }: StatusBarProps) {
+  const { colors } = useTheme()
   const shortcuts = getShortcuts(focusZone, showQueryLog)
   const visibleShortcuts = fitShortcuts(shortcuts, width)
 
@@ -82,8 +83,8 @@ export function StatusBar({ focusZone, showQueryLog, width }: StatusBarProps) {
       {visibleShortcuts.map((s, i) => (
         <text key={s.key}>
           {i > 0 ? SEP : ""}
-          <span fg={KEY_STYLE}>[{s.key}]</span>
-          <span fg={DESC_STYLE}> {s.desc}</span>
+          <span fg={colors.info}>[{s.key}]</span>
+          <span fg={colors.muted}> {s.desc}</span>
         </text>
       ))}
     </box>

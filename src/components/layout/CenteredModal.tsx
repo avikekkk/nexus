@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 interface PasteEventLike {
   text: string
@@ -41,6 +42,7 @@ export function CenteredModal({
   onPaste,
   children,
 }: CenteredModalProps) {
+  const { colors } = useTheme()
   const panelWidth = Math.min(maxWidth, Math.max(minWidth, width - widthPadding))
   const panelHeight = Math.min(maxHeight, Math.max(minHeight, height - heightPadding))
   const left = Math.max(0, Math.floor((width - panelWidth) / 2))
@@ -54,7 +56,7 @@ export function CenteredModal({
         top={0}
         width="100%"
         height="100%"
-        backgroundColor="#000000"
+        backgroundColor={colors.overlay}
         opacity={0.6}
         zIndex={80}
       />
@@ -67,8 +69,8 @@ export function CenteredModal({
         height={panelHeight}
         border
         borderStyle="rounded"
-        borderColor="#7aa2f7"
-        backgroundColor="#1a1b26"
+        borderColor={colors.purple}
+        backgroundColor={colors.background}
         title={` ${title} `}
         zIndex={90}
         flexDirection="column"

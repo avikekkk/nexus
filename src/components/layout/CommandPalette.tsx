@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useKeyboard } from "@opentui/react"
 import { fuzzyScore } from "../../utils/fuzzy.ts"
 import { deleteWordBackward, getTextInput, isDeleteWordKey, isSubmitKey, normalizeTextInput } from "../../utils/keyInput.ts"
 import { subscribePaste } from "../../state/paste.ts"
 import { CenteredModal, createPasteHandler } from "./CenteredModal.tsx"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 export interface CommandItem {
   id: string
@@ -21,9 +22,11 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ visible, width, height, commands, onClose }: CommandPaletteProps) {
+  const { colors } = useTheme()
   const [query, setQuery] = useState("")
   const [cursorPos, setCursorPos] = useState(0)
   const [selected, setSelected] = useState(0)
+  const openedAtRef = useRef(0)
 
   const filtered = useMemo(() => {
     const ranked = commands
@@ -33,8 +36,18 @@ export function CommandPalette({ visible, width, height, commands, onClose }: Co
     return ranked.map((r) => r.cmd)
   }, [commands, query])
 
+  useEffect(() => {
+    if (!visible) return
+    openedAtRef.current = Date.now()
+  }, [visible])
+
   useKeyboard((key) => {
     if (!visible) return
+    if (Date.now() - openedAtRef.current < 120) return
+
+    const isRepeat = key.eventType === "repeat" || key.repeated
+    if (isRepeat) return
+
     if (key.name === "escape") {
       onClose()
       return
@@ -145,44 +158,44 @@ export function CommandPalette({ visible, width, height, commands, onClose }: Co
     >
       <box height={1} paddingX={1}>
         {query ? (
-          <text fg="#c0caf5">
+          <text fg={colors.textBright}>
             {query.slice(0, cursorPos)}
             {cursorPos < query.length ? (
-              <span fg="#1a1b26" bg="#7aa2f7">
+              <span fg={colors.background} bg={colors.accent}>
                 {query[cursorPos]}
               </span>
             ) : (
-              <span fg="#7aa2f7">█</span>
+              <span fg={colors.accent}>█</span>
             )}
             {query.slice(cursorPos + (cursorPos < query.length ? 1 : 0))}
           </text>
         ) : (
-          <text fg="#565f89">
-            <span fg="#1a1b26" bg="#7aa2f7">S</span>
+          <text fg={colors.muted}>
+            <span fg={colors.background} bg={colors.accent}>S</span>
             earch Commands
           </text>
         )}
       </box>
       <box height={1} paddingX={1}>
-        <text fg="#414868">{"─".repeat(200)}</text>
+        <text fg={colors.border}>{"─".repeat(200)}</text>
       </box>
       <box flexGrow={1} flexDirection="column" paddingX={1}>
         {filtered.length === 0 ? (
-          <text fg="#565f89">No commands</text>
+          <text fg={colors.muted}>No commands</text>
         ) : (
           filtered.slice(0, panelHeight - 4).map((cmd, idx) => {
             const active = idx === selected
             return (
-              <box key={cmd.id} flexDirection="row" justifyContent="space-between" backgroundColor={active ? "#283457" : undefined}>
-                <text fg={active ? "#c0caf5" : "#a9b1d6"}>{cmd.title}</text>
-                <text fg="#565f89">{cmd.shortcut ?? ""}</text>
+              <box key={cmd.id} flexDirection="row" justifyContent="space-between" backgroundColor={active ? colors.surfaceAlt : undefined}>
+                <text fg={active ? colors.textBright : colors.text}>{cmd.title}</text>
+                <text fg={colors.muted}>{cmd.shortcut ?? ""}</text>
               </box>
             )
           })
         )}
       </box>
       <box height={1} paddingX={1}>
-        <text fg="#414868">[Enter] Run  [Esc] Close</text>
+        <text fg={colors.border}>[Enter] Run  [Esc] Close</text>
       </box>
     </CenteredModal>
   )

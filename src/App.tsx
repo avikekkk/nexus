@@ -13,8 +13,11 @@ import { useApp } from "./state/AppContext.tsx"
 import { Toast } from "./components/layout/Toast.tsx"
 import { CommandPalette, type CommandItem } from "./components/layout/CommandPalette.tsx"
 import { QueryDatabasePicker, type QueryDatabaseOption } from "./components/layout/QueryDatabasePicker.tsx"
+import { ThemePicker } from "./components/layout/ThemePicker.tsx"
 import { emitPaste } from "./state/paste.ts"
 import type { DbType } from "./db/types.ts"
+import { useTheme } from "./theme/ThemeContext.tsx"
+import type { ThemeName } from "./theme/themes.ts"
 
 export type FocusZone = "sidebar" | "main" | "detail" | "querylog"
 
@@ -31,6 +34,7 @@ export function App() {
   const renderer = useRenderer()
   const { width, height } = useTerminalDimensions()
   const { state, addConnection, updateTabCell, openQueryConsole } = useApp()
+  const { themeName, theme, colors, setTheme } = useTheme()
   const [focusZone, setFocusZone] = useState<FocusZone>("sidebar")
   const [showQueryLog, setShowQueryLog] = useState(true)
   const [detailState, setDetailState] = useState<DetailState | null>(null)
@@ -42,6 +46,8 @@ export function App() {
   const [recentCommands, setRecentCommands] = useState<string[]>([])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [showQueryDatabasePicker, setShowQueryDatabasePicker] = useState(false)
+  const [showThemePicker, setShowThemePicker] = useState(false)
+  const [themeBeforePreview, setThemeBeforePreview] = useState<ThemeName | null>(null)
   const [isQueryInputFocused, setIsQueryInputFocused] = useState(false)
 
   const queryDatabaseOptions = useMemo<QueryDatabaseOption[]>(() => {
@@ -157,6 +163,16 @@ export function App() {
         },
       },
       {
+        id: "theme-picker",
+        title: `Theme (${theme.label})`,
+        shortcut: "Ctrl+T",
+        run: () =>
+          runCommand("theme-picker", () => {
+            setThemeBeforePreview(themeName)
+            setShowThemePicker(true)
+          }),
+      },
+      {
         id: "quit",
         title: "Quit application",
         shortcut: "Ctrl+Q",
@@ -180,6 +196,8 @@ export function App() {
     sidebarCollapsed,
     state.connections,
     showToast,
+    theme.label,
+    themeName,
   ])
 
   // Auto-copy selected text to clipboard when mouse selection finishes
@@ -207,26 +225,39 @@ export function App() {
   }, [renderer, showToast])
 
   useKeyboard((key) => {
+    const isRepeat = key.eventType === "repeat" || key.repeated
+    const hasBlockingModal =
+      showConnectionForm || !!databasePickerConnectionId || !!searchDialogDb || showCommandPalette || showQueryDatabasePicker || showThemePicker
 
     if (key.ctrl && key.name === "q") {
+      if (isRepeat) return
       renderer.destroy()
       return
     }
 
     if (key.ctrl && key.name === "p") {
-      setShowCommandPalette((v) => !v)
+      if (isRepeat || hasBlockingModal) return
+      setShowCommandPalette(true)
       return
     }
 
     if (key.ctrl && key.name === "b") {
+      if (isRepeat || hasBlockingModal) return
       setSidebarCollapsed((prev) => !prev)
+      return
+    }
+
+    if (key.ctrl && key.name === "t") {
+      if (isRepeat || hasBlockingModal) return
+      setThemeBeforePreview(themeName)
+      setShowThemePicker(true)
       return
     }
 
     if (showCommandPalette) return
 
     // Block all other keys when modal is open
-    if (showConnectionForm || databasePickerConnectionId || searchDialogDb || showQueryDatabasePicker) return
+    if (hasBlockingModal) return
 
     if (key.name === "`") {
       setShowQueryLog((v) => !v)
@@ -262,7 +293,8 @@ export function App() {
   const queryLogHeight = showQueryLog ? 8 : 0
   const statusBarHeight = 1
   const bottomMarginHeight = 1
-  const hasModalOpen = showConnectionForm || !!databasePickerConnectionId || !!searchDialogDb || showCommandPalette || showQueryDatabasePicker
+  const hasModalOpen =
+    showConnectionForm || !!databasePickerConnectionId || !!searchDialogDb || showCommandPalette || showQueryDatabasePicker || showThemePicker
   const topAreaHeight = Math.max(6, height - queryLogHeight - statusBarHeight - bottomMarginHeight)
 
   // Center the connection form modal
@@ -272,7 +304,7 @@ export function App() {
   const formTop = Math.max(0, Math.floor((height - formHeight) / 2))
 
   return (
-    <box flexDirection="column" width="100%" height="100%">
+    <box flexDirection="column" width="100%" height="100%" backgroundColor={colors.background}>
       {/* Top area: sidebar + main + detail */}
       <box flexDirection="row" height={topAreaHeight}>
         {!sidebarCollapsed && (
@@ -352,7 +384,7 @@ export function App() {
             top={0}
             width="100%"
             height="100%"
-            backgroundColor="#000000"
+            backgroundColor={colors.overlay}
             opacity={0.6}
             zIndex={50}
           />
@@ -384,7 +416,7 @@ export function App() {
               top={0}
               width="100%"
               height="100%"
-              backgroundColor="#000000"
+              backgroundColor={colors.overlay}
               opacity={0.6}
               zIndex={50}
             />
@@ -413,7 +445,7 @@ export function App() {
               top={0}
               width="100%"
               height="100%"
-              backgroundColor="#000000"
+              backgroundColor={colors.overlay}
               opacity={0.6}
               zIndex={50}
             />
@@ -452,6 +484,26 @@ export function App() {
           setFocusZone("main")
         }}
         onClose={() => setShowQueryDatabasePicker(false)}
+      />
+
+      <ThemePicker
+        visible={showThemePicker}
+        width={width}
+        height={height}
+        currentTheme={themeName}
+        onPreview={(previewTheme) => setTheme(previewTheme)}
+        onSelect={(selectedTheme) => {
+          setTheme(selectedTheme)
+          setShowThemePicker(false)
+          setThemeBeforePreview(null)
+        }}
+        onCancel={() => {
+          if (themeBeforePreview) {
+            setTheme(themeBeforePreview)
+          }
+          setShowThemePicker(false)
+          setThemeBeforePreview(null)
+        }}
       />
     </box>
   )

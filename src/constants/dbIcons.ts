@@ -1,4 +1,5 @@
 import type { DbType, ConnectionStatus } from "../db/types.ts"
+import type { ThemeColors } from "../theme/themes.ts"
 
 /**
  * Nerd Font icons for database types
@@ -15,12 +16,14 @@ export const DB_TYPE_ICONS: Record<DbType, string> = {
 /**
  * Brand colors for database types
  */
-export const DB_TYPE_COLORS: Record<DbType, string> = {
-  elasticsearch: "#e0af68", // Yellow/Gold (Elasticsearch brand)
-  mongo: "#9ece6a", // Green (MongoDB brand)
-  redis: "#f7768e", // Red (Redis brand)
-  mysql: "#7aa2f7", // Blue (MySQL brand)
-  postgres: "#7dcfff", // Cyan (PostgreSQL-like)
+export function getDbTypeColors(colors: ThemeColors): Record<DbType, string> {
+  return {
+    elasticsearch: colors.warning,
+    mongo: colors.success,
+    redis: colors.error,
+    mysql: colors.accent,
+    postgres: colors.info,
+  }
 }
 
 /**
@@ -36,11 +39,13 @@ export const STATUS_INDICATORS: Record<ConnectionStatus, string> = {
 /**
  * Status colors
  */
-const STATUS_COLORS: Record<ConnectionStatus, string> = {
-  disconnected: "#565f89",
-  connecting: "#e0af68",
-  connected: "#9ece6a",
-  error: "#f7768e",
+function getStatusColors(colors: ThemeColors): Record<ConnectionStatus, string> {
+  return {
+    disconnected: colors.muted,
+    connecting: colors.warning,
+    connected: colors.success,
+    error: colors.error,
+  }
 }
 
 /**
@@ -48,9 +53,9 @@ const STATUS_COLORS: Record<ConnectionStatus, string> = {
  * For connected: use brand color
  * For other states: use status color
  */
-export function getIconColor(type: DbType, status: ConnectionStatus): string {
+export function getIconColor(type: DbType, status: ConnectionStatus, colors: ThemeColors): string {
   if (status === "connected") {
-    return DB_TYPE_COLORS[type]
+    return getDbTypeColors(colors)[type]
   }
-  return STATUS_COLORS[status]
+  return getStatusColors(colors)[status]
 }

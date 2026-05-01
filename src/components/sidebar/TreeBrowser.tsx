@@ -2,6 +2,7 @@ import { nodeId, type TreeNode } from "../../state/tree.ts"
 import type { ConnectionState, RedisKeyType, DbType } from "../../db/types.ts"
 import { getRedisTypeIcon } from "../../utils/redisIcons.ts"
 import { DB_TYPE_ICONS } from "../../constants/dbIcons.ts"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 const EXPANDED_ICON = "▾"
 const COLLAPSED_ICON = "▸"
@@ -178,14 +179,15 @@ export function TreeRow({
   isSelected: boolean
   maxWidth?: number
 }) {
+  const { colors } = useTheme()
   const indent = "  ".repeat(node.depth)
-  const bg = isSelected ? "#283457" : "transparent"
-  const fg = isSelected ? "#c0caf5" : "#a9b1d6"
+  const bg = isSelected ? colors.surfaceAlt : "transparent"
+  const fg = isSelected ? colors.textBright : colors.text
 
   if (node.isHint) {
     return (
       <box flexDirection="row" paddingX={1} backgroundColor={bg}>
-        <text fg="#565f89">
+        <text fg={colors.muted}>
           {indent}
           {node.label}
         </text>
@@ -223,8 +225,8 @@ export function TreeRow({
     <box flexDirection="row" paddingX={1} backgroundColor={bg}>
       <text fg={fg}>
         {indent}
-        <span fg="#565f89">{icon}</span> {typeIcon} {label}
-        {countStr && <span fg="#414868">{countStr}</span>}
+        <span fg={colors.muted}>{icon}</span> {typeIcon} {label}
+        {countStr && <span fg={colors.border}>{countStr}</span>}
       </text>
     </box>
   )

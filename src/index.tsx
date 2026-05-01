@@ -2,6 +2,7 @@ import { createCliRenderer } from "@opentui/core"
 import { createRoot } from "@opentui/react"
 import { App } from "./App.tsx"
 import { AppProvider, disconnectAllDrivers } from "./state/AppContext.tsx"
+import { ThemeProvider } from "./theme/ThemeContext.tsx"
 
 const renderer = await createCliRenderer({
   exitOnCtrlC: true,
@@ -17,7 +18,9 @@ const renderer = await createCliRenderer({
 })
 
 createRoot(renderer).render(
-  <AppProvider>
-    <App />
-  </AppProvider>
+  <ThemeProvider>
+    <AppProvider>
+      <App />
+    </AppProvider>
+  </ThemeProvider>
 )

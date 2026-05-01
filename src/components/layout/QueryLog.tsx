@@ -1,35 +1,49 @@
 import { useApp } from "../../state/AppContext.tsx"
 import { formatTimestamp, type ConsoleEntry } from "../../state/console.ts"
+import type { ThemeColors } from "../../theme/themes.ts"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 interface ConsoleProps {
   height: number
   focused: boolean
 }
 
-function formatEntry(entry: ConsoleEntry): string {
-  const time = formatTimestamp(entry.timestamp)
-  const levelLabel = entry.level === "warning" ? "WARN" : entry.level.toUpperCase()
-  return `${time} │ ${entry.source.toUpperCase().padEnd(10)} │ ${levelLabel.padEnd(8)}${entry.message}`
+function getLevelLabel(level: ConsoleEntry["level"]): string {
+  return level === "warning" ? "WARN" : level.toUpperCase()
 }
 
-function getLevelColor(level: ConsoleEntry["level"]): string {
+function getSourceColor(source: ConsoleEntry["source"], colors: ThemeColors): string {
+  switch (source) {
+    case "query":
+      return colors.info
+    case "connection":
+      return colors.purple
+    case "system":
+      return colors.teal
+    default:
+      return colors.muted
+  }
+}
+
+function getLevelColor(level: ConsoleEntry["level"], colors: ThemeColors): string {
   switch (level) {
     case "error":
-      return "#f7768e"
+      return colors.error
     case "warning":
-      return "#e0af68"
+      return colors.warning
     case "info":
-      return "#7aa2f7"
+      return colors.info
     case "success":
-      return "#9ece6a"
+      return colors.success
     default:
-      return "#a9b1d6"
+      return colors.text
   }
 }
 
 export function Console({ height, focused }: ConsoleProps) {
   const { state } = useApp()
-  const borderColor = focused ? "#7aa2f7" : "#414868"
+  const { colors } = useTheme()
+  const borderColor = focused ? colors.purple : colors.border
   const entries = state.consoleEntries
 
   return (
@@ -44,7 +58,7 @@ export function Console({ height, focused }: ConsoleProps) {
     >
       {entries.length === 0 ? (
         <box flexGrow={1} paddingX={1}>
-          <text fg="#565f89">No activity yet</text>
+          <text fg={colors.muted}>No activity yet</text>
         </box>
       ) : (
         <scrollbox
@@ -58,16 +72,29 @@ export function Console({ height, focused }: ConsoleProps) {
           verticalScrollbarOptions={{
             showArrows: false,
             trackOptions: {
-              backgroundColor: "#1a1b26",
-              foregroundColor: "#414868",
+              backgroundColor: colors.background,
+              foregroundColor: colors.border,
             },
           }}
         >
-          {entries.map((entry) => (
-            <text key={entry.id} fg={getLevelColor(entry.level)}>
-              {formatEntry(entry)}
-            </text>
-          ))}
+          {entries.map((entry) => {
+            const time = formatTimestamp(entry.timestamp)
+            const source = entry.source.toUpperCase().padEnd(10)
+            const levelLabel = getLevelLabel(entry.level).padEnd(8)
+            const levelColor = getLevelColor(entry.level, colors)
+            const sourceColor = getSourceColor(entry.source, colors)
+
+            return (
+              <text key={entry.id}>
+                <span fg={colors.muted}>{time}</span>
+                <span fg={colors.border}> │ </span>
+                <span fg={sourceColor}>{source}</span>
+                <span fg={colors.border}> │ </span>
+                <span fg={levelColor}>{levelLabel}</span>
+                <span fg={colors.text}>{entry.message}</span>
+              </text>
+            )
+          })}
         </scrollbox>
       )}
     </box>

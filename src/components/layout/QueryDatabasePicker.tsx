@@ -3,6 +3,7 @@ import { useKeyboard } from "@opentui/react"
 import { getTextInput, isSubmitKey, normalizeTextInput } from "../../utils/keyInput.ts"
 import { subscribePaste } from "../../state/paste.ts"
 import { CenteredModal, createPasteHandler } from "./CenteredModal.tsx"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 export interface QueryDatabaseOption {
   key: string
@@ -21,6 +22,7 @@ interface QueryDatabasePickerProps {
 }
 
 export function QueryDatabasePicker({ visible, width, height, options, onSelect, onClose }: QueryDatabasePickerProps) {
+  const { colors } = useTheme()
   const [query, setQuery] = useState("")
   const [selected, setSelected] = useState(0)
   const [searchMode, setSearchMode] = useState(false)
@@ -124,28 +126,28 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
       onPaste={handlePaste}
     >
       <box height={1} paddingX={1}>
-        {searchMode ? query ? <text fg="#c0caf5">Search: {query}</text> : <text fg="#c0caf5">Search: </text> : <text fg="#565f89">Press / to search databases</text>}
+        {searchMode ? query ? <text fg={colors.textBright}>Search: {query}</text> : <text fg={colors.textBright}>Search: </text> : <text fg={colors.muted}>Press / to search databases</text>}
       </box>
       <box height={1} paddingX={1}>
-        <text fg="#414868">{"─".repeat(200)}</text>
+        <text fg={colors.border}>{"─".repeat(200)}</text>
       </box>
       <box flexGrow={1} flexDirection="column" paddingX={1}>
         {filtered.length === 0 ? (
-          <text fg="#565f89">No databases found</text>
+          <text fg={colors.muted}>No databases found</text>
         ) : (
           filtered.slice(0, panelHeight - 4).map((option, idx) => {
             const active = idx === selected
             return (
-              <box key={option.key} flexDirection="row" justifyContent="space-between" backgroundColor={active ? "#283457" : undefined}>
-                <text fg={active ? "#c0caf5" : "#a9b1d6"}>{option.database}</text>
-                <text fg="#565f89">[{option.connectionName}]</text>
+              <box key={option.key} flexDirection="row" justifyContent="space-between" backgroundColor={active ? colors.surfaceAlt : undefined}>
+                <text fg={active ? colors.textBright : colors.text}>{option.database}</text>
+                <text fg={colors.muted}>[{option.connectionName}]</text>
               </box>
             )
           })
         )}
       </box>
       <box height={1} paddingX={1}>
-        <text fg="#414868">[Enter] Open query tab  [/] Search  [Esc] {searchMode ? "Exit search" : "Close"}</text>
+        <text fg={colors.border}>[Enter] Open query tab  [/] Search  [Esc] {searchMode ? "Exit search" : "Close"}</text>
       </box>
     </CenteredModal>
   )

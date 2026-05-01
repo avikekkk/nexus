@@ -1,4 +1,5 @@
 import { useEffect } from "react"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 interface ToastProps {
   message: string
@@ -12,6 +13,7 @@ export function Toast({ message, durationMs = 2000, onDismiss }: ToastProps) {
     return () => clearTimeout(timer)
   }, [message, durationMs, onDismiss])
 
+  const { colors } = useTheme()
   const padding = 2
 
   return (
@@ -22,11 +24,11 @@ export function Toast({ message, durationMs = 2000, onDismiss }: ToastProps) {
       zIndex={100}
       border
       borderStyle="rounded"
-      borderColor="#414868"
-      backgroundColor="#1a1b26"
+      borderColor={colors.border}
+      backgroundColor={colors.background}
       paddingX={padding}
     >
-      <text fg="#7aa2f7">{message}</text>
+      <text fg={colors.info}>{message}</text>
     </box>
   )
 }

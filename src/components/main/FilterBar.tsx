@@ -15,6 +15,7 @@ import { subscribePaste } from "../../state/paste.ts"
 import { CompletionMenu } from "../common/CompletionMenu.tsx"
 import { getCompletions } from "../../query/completion/engine.ts"
 import type { CompletionSuggestion } from "../../query/completion/types.ts"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 interface FilterBarProps {
   focused: boolean
@@ -226,6 +227,7 @@ export function FilterBar({
   onClear,
   onUnfocus,
 }: FilterBarProps) {
+  const { colors } = useTheme()
   const [filterInput, setFilterInput] = useState("")
   const [cursorPos, setCursorPos] = useState(0)
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -530,44 +532,44 @@ export function FilterBar({
   return (
     <box flexDirection="column" onPaste={handlePaste}>
       <box height={1} flexDirection="row" paddingX={1}>
-        <text fg="#565f89">{"Query: "}</text>
+        <text fg={colors.muted}>{"Query: "}</text>
         <box flexGrow={1} flexDirection="row">
           {filterInput ? (
             focused ? (
-              <text fg="#c0caf5">
+              <text fg={colors.textBright}>
                 {filterInput.slice(0, cursorPos)}
                 {cursorPos < filterInput.length ? (
-                  <span fg="#1a1b26" bg="#7aa2f7">
+                  <span fg={colors.background} bg={colors.accent}>
                     {filterInput[cursorPos]}
                   </span>
                 ) : (
-                  <span fg="#7aa2f7">█</span>
+                  <span fg={colors.accent}>█</span>
                 )}
                 {filterInput.slice(cursorPos + (cursorPos < filterInput.length ? 1 : 0))}
               </text>
             ) : (
-              <text fg="#a9b1d6">{filterInput}</text>
+              <text fg={colors.text}>{filterInput}</text>
             )
           ) : (
-            <text fg="#565f89">{focused ? <span fg="#7aa2f7">█</span> : "{}"}</text>
+            <text fg={colors.muted}>{focused ? <span fg={colors.accent}>█</span> : "{}"}</text>
           )}
         </box>
 
         {sortIndicator && (
           <box paddingLeft={1}>
-            <text fg="#565f89">{sortIndicator}</text>
+            <text fg={colors.muted}>{sortIndicator}</text>
           </box>
         )}
 
         {validationError && (
           <box paddingLeft={1}>
-            <text fg="#f7768e">{"✗"}</text>
+            <text fg={colors.error}>{"✗"}</text>
           </box>
         )}
 
         {focused && (
           <box paddingLeft={1}>
-            <text fg="#565f89">{"⏎"}</text>
+            <text fg={colors.muted}>{"⏎"}</text>
           </box>
         )}
       </box>
@@ -580,7 +582,7 @@ export function FilterBar({
       )}
 
       <box height={1} paddingX={0}>
-        <text fg="#414868">{"─".repeat(200)}</text>
+        <text fg={colors.border}>{"─".repeat(200)}</text>
       </box>
     </box>
   )

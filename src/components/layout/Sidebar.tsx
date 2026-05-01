@@ -5,6 +5,8 @@ import { useApp } from "../../state/AppContext.tsx"
 import { flattenTreeNodes, TreeRow, type FlatNode } from "../sidebar/TreeBrowser.tsx"
 import { nodeId } from "../../state/tree.ts"
 import { DB_TYPE_ICONS, getIconColor, STATUS_INDICATORS } from "../../constants/dbIcons.ts"
+import type { ThemeColors } from "../../theme/themes.ts"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 interface SidebarProps {
   width: number
@@ -27,6 +29,7 @@ interface SidebarRowsProps {
   rows: RowItem[]
   connections: ReturnType<typeof useApp>["state"]["connections"]
   allDatabases: ReturnType<typeof useApp>["state"]["allDatabases"]
+  colors: ThemeColors
 }
 
 function truncateName(name: string, maxLen: number): string {
@@ -39,53 +42,53 @@ type RowItem =
   | { kind: "connection"; index: number; connectionId: string }
   | { kind: "tree"; node: FlatNode }
 
-function EmptyConnectionsState(): ReactNode {
+function EmptyConnectionsState({ colors }: { colors: ThemeColors }): ReactNode {
   return (
     <box flexGrow={1} flexDirection="column" padding={1} gap={0}>
-      <text fg="#565f89">No connections yet</text>
-      <text fg="#565f89">
-        Press <span fg="#7aa2f7">a</span> to add one
+      <text fg={colors.muted}>No connections yet</text>
+      <text fg={colors.muted}>
+        Press <span fg={colors.info}>a</span> to add one
       </text>
     </box>
   )
 }
 
-function SidebarFooter({ hasConnections }: { hasConnections: boolean }): ReactNode {
+function SidebarFooter({ hasConnections, colors }: { hasConnections: boolean; colors: ThemeColors }): ReactNode {
   return (
     <box paddingX={1} flexDirection="column" flexShrink={0}>
-      <text fg="#414868">
-        <span fg="#7aa2f7">[a]</span> Add
+      <text fg={colors.border}>
+        <span fg={colors.info}>[a]</span> Add
         {hasConnections && (
           <>
             {"  "}
-            <span fg="#7aa2f7">[e]</span> Edit
+            <span fg={colors.info}>[e]</span> Edit
             {"  "}
-            <span fg="#7aa2f7">[s]</span> Search
+            <span fg={colors.info}>[s]</span> Search
           </>
         )}
       </text>
       {hasConnections && (
-        <text fg="#414868">
-          <span fg="#7aa2f7">[Enter]</span> Open{"  "}
-          <span fg="#7aa2f7">[x]</span> Del
+        <text fg={colors.border}>
+          <span fg={colors.info}>[Enter]</span> Open{"  "}
+          <span fg={colors.info}>[x]</span> Del
         </text>
       )}
     </box>
   )
 }
 
-function SidebarRows({ width, focused, selectedIndex, rows, connections, allDatabases }: SidebarRowsProps): ReactNode {
+function SidebarRows({ width, focused, selectedIndex, rows, connections, allDatabases, colors }: SidebarRowsProps): ReactNode {
   return (
     <>
       {rows.map((row, rowIndex) => {
         const isSelected = rowIndex === selectedIndex && focused
-        const bg = isSelected ? "#283457" : "transparent"
-        const fg = isSelected ? "#c0caf5" : "#a9b1d6"
+        const bg = isSelected ? colors.surfaceAlt : "transparent"
+        const fg = isSelected ? colors.textBright : colors.text
 
         if (row.kind === "connection") {
           const conn = connections[row.index]!
           const typeIcon = DB_TYPE_ICONS[conn.config.type]
-          const iconColor = getIconColor(conn.config.type, conn.status)
+          const iconColor = getIconColor(conn.config.type, conn.status, colors)
           const allDbs = allDatabases.get(conn.config.id)
           const dbCount = allDbs ? allDbs.length : 0
           const dbCountLabel = dbCount > 0 ? ` (${dbCount})` : ""
@@ -102,7 +105,7 @@ function SidebarRows({ width, focused, selectedIndex, rows, connections, allData
                   {statusIndicator && <span fg={iconColor}>{statusIndicator}</span>}
                 </text>
               </box>
-              {dbCount > 0 && <text fg="#565f89">{dbCountLabel}</text>}
+              {dbCount > 0 && <text fg={colors.muted}>{dbCountLabel}</text>}
             </box>
           )
         }
@@ -127,9 +130,10 @@ export function Sidebar({
   onFocusMain,
 }: SidebarProps) {
   const { state, connectTo, disconnectFrom, removeConnection, toggleExpand, openCollection } = useApp()
+  const { colors } = useTheme()
   const [selectedIndex, setSelectedIndex] = useState(0)
   const scrollRef = useRef<ScrollBoxRenderable | null>(null)
-  const borderColor = focused ? "#7aa2f7" : "#414868"
+  const borderColor = focused ? colors.purple : colors.border
 
   const treeState = {
     treeExpanded: state.treeExpanded,
@@ -335,7 +339,7 @@ export function Sidebar({
       titleAlignment="left"
     >
       {rows.length === 0 ? (
-        <EmptyConnectionsState />
+        <EmptyConnectionsState colors={colors} />
       ) : (
         <scrollbox
           ref={scrollRef}
@@ -345,8 +349,8 @@ export function Sidebar({
           verticalScrollbarOptions={{
             showArrows: false,
             trackOptions: {
-              backgroundColor: "#1a1b26",
-              foregroundColor: "#414868",
+              backgroundColor: colors.background,
+              foregroundColor: colors.border,
             },
           }}
         >
@@ -357,11 +361,12 @@ export function Sidebar({
             rows={rows}
             connections={state.connections}
             allDatabases={state.allDatabases}
+            colors={colors}
           />
         </scrollbox>
       )}
 
-      <SidebarFooter hasConnections={state.connections.length > 0} />
+      <SidebarFooter hasConnections={state.connections.length > 0} colors={colors} />
     </box>
   )
 }

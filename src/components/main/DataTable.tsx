@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from "react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import type { MouseEvent as TuiMouseEvent } from "@opentui/core"
 import type { QueryResult, ColumnDef } from "../../db/types.ts"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 export interface SelectedCell {
   rowIndex: number
@@ -25,26 +26,27 @@ interface DataTableProps {
   filterBarActive?: boolean
 }
 
-const COLORS = {
-  header: "#7aa2f7",
-  headerBg: "#1a1b26",
-  separator: "#414868",
-  selectedRow: "#283457",
-  selectedCell: "#364a82",
-  string: "#9ece6a",
-  number: "#7dcfff",
-  boolean: "#e0af68",
-  null: "#565f89",
-  object: "#bb9af7",
-  text: "#a9b1d6",
-  dim: "#565f89",
-  rowNum: "#414868",
-  pageBg: "#1a1b26",
-  pageActive: "#7aa2f7",
-  pageInactive: "#565f89",
-  footerBg: "#1a1b26",
-  scrollTrack: "#1a1b26",
-  scrollThumb: "#414868",
+type TableColors = {
+  header: string
+  headerBg: string
+  separator: string
+  selectedRow: string
+  selectedCell: string
+  string: string
+  number: string
+  boolean: string
+  null: string
+  object: string
+  text: string
+  dim: string
+  rowNum: string
+  pageBg: string
+  pageActive: string
+  pageInactive: string
+  hintKey: string
+  footerBg: string
+  scrollTrack: string
+  scrollThumb: string
 }
 
 const MIN_COL_WIDTH = 6
@@ -55,7 +57,7 @@ const ROW_NUM_WIDTH = 4
 const COL_SEPARATOR = "│"
 const COL_PADDING = " "
 
-function getValueType(value: unknown): keyof typeof COLORS {
+function getValueType(value: unknown): keyof TableColors {
   if (value === null || value === undefined) return "null"
   if (typeof value === "string") return "string"
   if (typeof value === "number") return "number"
@@ -126,6 +128,32 @@ export function DataTable({
   detailWidth = 0,
   filterBarActive = false,
 }: DataTableProps) {
+  const { colors: themeColors } = useTheme()
+  const COLORS = useMemo<TableColors>(
+    () => ({
+      header: themeColors.textBright,
+      headerBg: themeColors.backgroundMuted,
+      separator: themeColors.border,
+      selectedRow: themeColors.surfaceAlt,
+      selectedCell: themeColors.surfaceStrong,
+      string: themeColors.success,
+      number: themeColors.info,
+      boolean: themeColors.warning,
+      null: themeColors.muted,
+      object: themeColors.purple,
+      text: themeColors.text,
+      dim: themeColors.muted,
+      rowNum: themeColors.border,
+      pageBg: themeColors.background,
+      pageActive: themeColors.purple,
+      pageInactive: themeColors.muted,
+      hintKey: themeColors.info,
+      footerBg: themeColors.backgroundMuted,
+      scrollTrack: themeColors.background,
+      scrollThumb: themeColors.border,
+    }),
+    [themeColors]
+  )
   const { width: termWidth, height: termHeight } = useTerminalDimensions()
   const [selectedRow, setSelectedRow] = useState(0)
   const [selectedCol, setSelectedCol] = useState(0)
@@ -581,7 +609,6 @@ export function DataTable({
   const rowRange = rows.length > 0 ? `Rows ${effectiveOffset + 1}–${effectiveOffset + rows.length} of ${totalRows}` : "No rows"
   const colInfo = `Col ${selectedCol + 1}/${columns.length}`
   const navHint = [hasPrevPage ? "[p]prev" : "", hasNextPage ? "[n]next" : ""].filter(Boolean).join("  ")
-  const filterHints = filterBarActive ? "[Enter] Run  [Esc] Close  [⌃L] Clear" : "[/]filter  [s]sort"
 
   return (
     <box flexDirection="column" flexGrow={1} onMouseScroll={handleMouseScroll}>
@@ -631,19 +658,34 @@ export function DataTable({
           {navHint ? (
             <>
               {"  "}
-              <span fg={COLORS.pageInactive}>{navHint}</span>
+              <span fg={COLORS.hintKey}>[{hasPrevPage ? "p" : ""}{hasPrevPage && hasNextPage ? "/" : ""}{hasNextPage ? "n" : ""}]</span>
+              <span fg={COLORS.pageInactive}> {hasPrevPage && hasNextPage ? "prev/next" : hasPrevPage ? "prev" : "next"}</span>
             </>
           ) : null}
-          {filterHints ? (
+          {filterBarActive ? (
             <>
               {"  "}
-              <span fg={COLORS.pageInactive}>{filterHints}</span>
+              <span fg={COLORS.hintKey}>[Enter]</span>
+              <span fg={COLORS.pageInactive}> Run </span>
+              <span fg={COLORS.hintKey}>[Esc]</span>
+              <span fg={COLORS.pageInactive}> Close </span>
+              <span fg={COLORS.hintKey}>[⌃L]</span>
+              <span fg={COLORS.pageInactive}> Clear</span>
             </>
-          ) : null}
+          ) : (
+            <>
+              {"  "}
+              <span fg={COLORS.hintKey}>[/]</span>
+              <span fg={COLORS.pageInactive}> Filter </span>
+              <span fg={COLORS.hintKey}>[s]</span>
+              <span fg={COLORS.pageInactive}> Sort</span>
+            </>
+          )}
           {showHorizontalScrollbar && (
             <>
               {"  "}
-              <span fg={COLORS.pageInactive}>[⇧+scroll] h-scroll</span>
+              <span fg={COLORS.hintKey}>[⇧+scroll]</span>
+              <span fg={COLORS.pageInactive}> h-scroll</span>
             </>
           )}
         </text>

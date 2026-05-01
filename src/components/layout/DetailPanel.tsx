@@ -5,6 +5,7 @@ import type { DbType } from "../../db/types.ts"
 import { formatBytes, stringifyValue, parseEditedValue, getTypeName } from "../../utils/detailValue.ts"
 import { deleteWordBackward, getTextInput, isDeleteWordKey, isInsertNewlineKey, normalizeTextInput } from "../../utils/keyInput.ts"
 import { subscribePaste } from "../../state/paste.ts"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 interface DetailPanelProps {
   width: number
@@ -30,7 +31,8 @@ export function DetailPanel({
   onApply,
   dbType,
 }: DetailPanelProps) {
-  const borderColor = focused ? "#7aa2f7" : "#414868"
+  const { colors } = useTheme()
+  const borderColor = focused ? colors.purple : colors.border
   const [value, setValue] = useState(() => stringifyValue(originalValue))
   const [cursorPos, setCursorPos] = useState(() => stringifyValue(originalValue).length)
   const [error, setError] = useState<string | null>(null)
@@ -387,14 +389,14 @@ export function DetailPanel({
       titleAlignment="left"
     >
       <box height={4} flexDirection="column" paddingX={1}>
-        <text fg="#7aa2f7">{clipLine(tabLabel)}</text>
-        <text fg="#c0caf5">{clipLine(`Field: ${fieldName}`)}</text>
-        <text fg="#565f89">{clipLine(`Type: ${metadata.type}  Size: ${metadata.size}`)}</text>
-        <text fg="#414868">{clipLine("Apply: Ctrl+A  Close: Esc/q")}</text>
+        <text fg={colors.info}>{clipLine(tabLabel)}</text>
+        <text fg={colors.textBright}>{clipLine(`Field: ${fieldName}`)}</text>
+        <text fg={colors.muted}>{clipLine(`Type: ${metadata.type}  Size: ${metadata.size}`)}</text>
+        <text fg={colors.border}>{clipLine("Apply: Ctrl+A  Close: Esc/q")}</text>
       </box>
 
       <box height={1} paddingX={1}>
-        <text fg="#414868">{"─".repeat(innerWidth)}</text>
+        <text fg={colors.border}>{"─".repeat(innerWidth)}</text>
       </box>
 
       <scrollbox
@@ -407,13 +409,13 @@ export function DetailPanel({
         verticalScrollbarOptions={{
           showArrows: false,
           trackOptions: {
-            backgroundColor: "#1a1b26",
-            foregroundColor: "#414868",
+            backgroundColor: colors.background,
+            foregroundColor: colors.border,
           },
         }}
       >
         {value.length === 0 ? (
-          <text fg="#565f89">(empty)</text>
+          <text fg={colors.muted}>(empty)</text>
         ) : (
           contentLines.map((line, lineIndex) => {
             const lineKey = `line-${lineStarts[lineIndex] ?? lineIndex}`
@@ -421,7 +423,7 @@ export function DetailPanel({
 
             if (!isCursorLine || cursorColumn < 0 || cursorColumn > line.length) {
               return (
-                <text key={lineKey} fg="#a9b1d6">
+                <text key={lineKey} fg={colors.text}>
                   {line}
                 </text>
               )
@@ -433,9 +435,9 @@ export function DetailPanel({
             const after = cursorAtEnd ? "" : line.slice(cursorColumn + 1)
 
             return (
-              <text key={lineKey} fg="#a9b1d6">
+              <text key={lineKey} fg={colors.text}>
                 {before}
-                <span fg="#1a1b26" bg="#7aa2f7">
+                <span fg={colors.background} bg={colors.info}>
                   {ch}
                 </span>
                 {after}
@@ -446,16 +448,16 @@ export function DetailPanel({
       </scrollbox>
 
       <box height={1} paddingX={1}>
-        <text fg="#414868">{"─".repeat(innerWidth)}</text>
+        <text fg={colors.border}>{"─".repeat(innerWidth)}</text>
       </box>
 
       <box height={3} flexDirection="column" paddingX={1}>
-        {error ? <text fg="#f7768e">{clipLine(error)}</text> : <text fg="#565f89">{clipLine(`Row preview: ${rowPreview}`)}</text>}
-        <text fg="#565f89">{clipLine("Ctrl+L clear  Ctrl+Enter newline  PgUp/PgDn scroll")}</text>
+        {error ? <text fg={colors.error}>{clipLine(error)}</text> : <text fg={colors.muted}>{clipLine(`Row preview: ${rowPreview}`)}</text>}
+        <text fg={colors.muted}>{clipLine("Ctrl+L clear  Ctrl+Enter newline  PgUp/PgDn scroll")}</text>
         {isApplying ? (
-          <text fg="#e0af68">Applying...</text>
+          <text fg={colors.warning}>Applying...</text>
         ) : (
-          <text fg="#414868">
+          <text fg={colors.border}>
             {clipLine(`Lines ${viewportTop + 1}-${Math.min(visualMetrics.totalVisualLines, viewportTop + effectiveVisibleRows)} of ${visualMetrics.totalVisualLines}`)}
           </text>
         )}

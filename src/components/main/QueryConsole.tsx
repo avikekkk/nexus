@@ -16,6 +16,7 @@ import { getCompletions } from "../../query/completion/engine.ts"
 import { deleteWithAutoPair, insertWithAutoPair } from "../../query/editor/autoPair.ts"
 import type { CompletionSuggestion } from "../../query/completion/types.ts"
 import type { DbType } from "../../db/types.ts"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 interface QueryConsoleProps {
   focused: boolean
@@ -54,6 +55,7 @@ export function QueryConsole({
   onExecute,
   onBlur,
 }: QueryConsoleProps) {
+  const { colors } = useTheme()
   const [cursorPos, setCursorPos] = useState(query.length)
   const [completion, setCompletion] = useState<ActiveCompletion | null>(null)
   const [completionIndex, setCompletionIndex] = useState(0)
@@ -278,17 +280,17 @@ export function QueryConsole({
 
   return (
     <box flexGrow={1} flexDirection="column" padding={1} onPaste={handlePaste}>
-      <text fg="#565f89">Enter run • Ctrl+Enter newline • Esc exit input</text>
+      <text fg={colors.muted}>Enter run • Ctrl+Enter newline • Esc exit input</text>
       <box height={1}>
-        <text fg="#414868">{"─".repeat(200)}</text>
+        <text fg={colors.border}>{"─".repeat(200)}</text>
       </box>
-      {error && <text fg="#f7768e">{error}</text>}
+      {error && <text fg={colors.error}>{error}</text>}
       <box flexGrow={1} flexDirection="column">
         {lines.length === 0 ? (
           <>
-            <text fg="#565f89">Type query...</text>
-            <text fg="#565f89">Mongo examples: db.users.find(&#123;&#125;)</text>
-            <text fg="#565f89">db.users.find(&#123;"year": &#123;"$gte": 2000&#125;&#125;).sort(&#123;"year": -1&#125;).limit(20)</text>
+            <text fg={colors.muted}>Type query...</text>
+            <text fg={colors.muted}>Mongo examples: db.users.find(&#123;&#125;)</text>
+            <text fg={colors.muted}>db.users.find(&#123;"year": &#123;"$gte": 2000&#125;&#125;).sort(&#123;"year": -1&#125;).limit(20)</text>
           </>
         ) : (
           lines.map((line, lineIndex) => {
@@ -296,7 +298,7 @@ export function QueryConsole({
 
             if (!focused || lineIndex !== cursorLine) {
               return (
-                <text key={lineKey} fg="#a9b1d6">
+                <text key={lineKey} fg={colors.text}>
                   {line || " "}
                 </text>
               )
@@ -311,14 +313,14 @@ export function QueryConsole({
 
             return (
               <box key={lineKey} flexDirection="column">
-                <text fg="#c0caf5">
+                <text fg={colors.textBright}>
                   {before}
                   {current ? (
-                    <span fg="#1a1b26" bg="#7aa2f7">
+                    <span fg={colors.background} bg={colors.accent}>
                       {current}
                     </span>
                   ) : (
-                    <span fg="#7aa2f7">█</span>
+                    <span fg={colors.accent}>█</span>
                   )}
                   {after}
                 </text>

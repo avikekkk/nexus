@@ -5,6 +5,7 @@ import { DEFAULT_PORTS } from "../../db/types.ts"
 import { parseConnectionUrl } from "../../db/url.ts"
 import { debug } from "../../utils/debug.ts"
 import { wrapDbTypeRows } from "./dbTypeRows.ts"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 interface ConnectionFormProps {
   left?: number
@@ -106,6 +107,7 @@ function reducer(state: FormState, action: FormAction): FormState {
 }
 
 export function ConnectionForm({ left, top, editMode = false, existingConfig, onSubmit, onCancel }: ConnectionFormProps) {
+  const { colors } = useTheme()
   const [state, dispatch] = useReducer(reducer, existingConfig, buildInitialState)
 
   const { name, dbType, url, host, port, username, password, tls, focusIndex, urlError } = state
@@ -211,9 +213,16 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
   const labelWidth = 11
   const inputWidth = 32
   const dbTypeRows = wrapDbTypeRows(DB_TYPES, inputWidth)
-  const labelFg = "#565f89"
-  const activeLabelFg = "#7aa2f7"
-  const disabledFg = "#414868"
+  const labelFg = colors.muted
+  const activeLabelFg = colors.info
+  const disabledFg = colors.border
+  const inputBackground = colors.backgroundMuted
+  const inputFocusedBackground = colors.surface
+  const inputText = colors.textBright
+  const focusBorder = colors.purple
+  const selectedChipBg = colors.surfaceStrong
+  const selectedChipFg = colors.textBright
+  const actionBg = colors.surfaceStrong
 
   return (
     <box
@@ -225,8 +234,8 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
       flexDirection="column"
       border
       borderStyle="rounded"
-      borderColor="#7aa2f7"
-      backgroundColor="#1a1b26"
+      borderColor={focusBorder}
+      backgroundColor={colors.background}
       title=" New Connection "
       titleAlignment="center"
       zIndex={100}
@@ -234,7 +243,7 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
       <box flexDirection="column" padding={1} gap={0}>
         {editMode && (
           <box flexDirection="row" marginBottom={1}>
-            <text fg="#e0af68">Editing: {existingConfig?.name}</text>
+            <text fg={colors.warning}>Editing: {existingConfig?.name}</text>
           </box>
         )}
         <box flexDirection="row" gap={1}>
@@ -247,9 +256,9 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
             placeholder="My Database"
             focused={focusIndex === 0}
             width={inputWidth}
-            backgroundColor="#16161e"
-            focusedBackgroundColor="#292e42"
-            textColor="#c0caf5"
+            backgroundColor={inputBackground}
+            focusedBackgroundColor={inputFocusedBackground}
+            textColor={inputText}
           />
         </box>
 
@@ -261,7 +270,7 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
             {dbTypeRows.map((row, rowIndex) => (
               <box key={`type-row-${rowIndex}`} flexDirection="row" gap={1}>
                 {row.map((t) => (
-                  <text key={t.value} fg={dbType === t.value ? "#1a1b26" : "#a9b1d6"} bg={dbType === t.value ? "#7aa2f7" : "#292e42"}>
+                  <text key={t.value} fg={dbType === t.value ? selectedChipFg : colors.text} bg={dbType === t.value ? selectedChipBg : colors.surface}>
                     {" "}
                     {t.name}{" "}
                   </text>
@@ -281,16 +290,16 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
             placeholder="mongodb://user:pass@host:port/db"
             focused={focusIndex === 2}
             width={inputWidth}
-            backgroundColor="#16161e"
-            focusedBackgroundColor="#292e42"
-            textColor="#c0caf5"
+            backgroundColor={inputBackground}
+            focusedBackgroundColor={inputFocusedBackground}
+            textColor={inputText}
           />
         </box>
 
         {hasUrl && urlError ? (
           <box flexDirection="row" gap={1}>
             <text width={labelWidth}>{" "}</text>
-            <text fg="#f7768e" width={inputWidth}>
+            <text fg={colors.error} width={inputWidth}>
               {urlError}
             </text>
           </box>
@@ -306,9 +315,9 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
             placeholder="localhost"
             focused={!hasUrl && focusIndex === 3}
             width={inputWidth}
-            backgroundColor="#16161e"
-            focusedBackgroundColor={hasUrl ? "#16161e" : "#292e42"}
-            textColor={hasUrl ? disabledFg : "#c0caf5"}
+            backgroundColor={inputBackground}
+            focusedBackgroundColor={hasUrl ? inputBackground : inputFocusedBackground}
+            textColor={hasUrl ? disabledFg : inputText}
           />
         </box>
 
@@ -322,9 +331,9 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
             placeholder={String(DEFAULT_PORTS[dbType])}
             focused={!hasUrl && focusIndex === 4}
             width={inputWidth}
-            backgroundColor="#16161e"
-            focusedBackgroundColor={hasUrl ? "#16161e" : "#292e42"}
-            textColor={hasUrl ? disabledFg : "#c0caf5"}
+            backgroundColor={inputBackground}
+            focusedBackgroundColor={hasUrl ? inputBackground : inputFocusedBackground}
+            textColor={hasUrl ? disabledFg : inputText}
           />
         </box>
 
@@ -338,9 +347,9 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
             placeholder="optional"
             focused={!hasUrl && focusIndex === 5}
             width={inputWidth}
-            backgroundColor="#16161e"
-            focusedBackgroundColor={hasUrl ? "#16161e" : "#292e42"}
-            textColor={hasUrl ? disabledFg : "#c0caf5"}
+            backgroundColor={inputBackground}
+            focusedBackgroundColor={hasUrl ? inputBackground : inputFocusedBackground}
+            textColor={hasUrl ? disabledFg : inputText}
           />
         </box>
 
@@ -354,9 +363,9 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
             placeholder="optional"
             focused={!hasUrl && focusIndex === 6}
             width={inputWidth}
-            backgroundColor="#16161e"
-            focusedBackgroundColor={hasUrl ? "#16161e" : "#292e42"}
-            textColor={hasUrl ? disabledFg : "#c0caf5"}
+            backgroundColor={inputBackground}
+            focusedBackgroundColor={hasUrl ? inputBackground : inputFocusedBackground}
+            textColor={hasUrl ? disabledFg : inputText}
           />
         </box>
 
@@ -365,26 +374,26 @@ export function ConnectionForm({ left, top, editMode = false, existingConfig, on
             TLS/SSL
           </text>
           <box width={inputWidth} flexDirection="row" gap={1}>
-            <text fg={focusIndex === 7 ? "#1a1b26" : "#a9b1d6"} bg={focusIndex === 7 ? "#7aa2f7" : "#292e42"}>
+            <text fg={focusIndex === 7 ? selectedChipFg : colors.text} bg={focusIndex === 7 ? selectedChipBg : colors.surface}>
               {tls ? " Enabled " : " Disabled "}
             </text>
-            <text fg="#565f89">(Space/Enter to toggle)</text>
+            <text fg={colors.muted}>(Space/Enter to toggle)</text>
           </box>
         </box>
 
         <box flexDirection="row" gap={1} marginTop={1}>
           <text width={labelWidth}>{" "}</text>
-          <box width={inputWidth} backgroundColor={focusIndex === 8 ? "#7aa2f7" : "#292e42"} justifyContent="center">
-            <text fg={focusIndex === 8 ? "#1a1b26" : "#a9b1d6"}> Save Connection </text>
+          <box width={inputWidth} backgroundColor={focusIndex === 8 ? actionBg : colors.surface} justifyContent="center">
+            <text fg={focusIndex === 8 ? selectedChipFg : colors.text}> Save Connection </text>
           </box>
         </box>
       </box>
 
       <box paddingX={1}>
-        <text fg="#414868">
-          <span fg="#565f89">[Tab]</span> Next {"  "}
-          <span fg="#565f89">[Enter]</span> Save {"  "}
-          <span fg="#565f89">[Esc]</span> Cancel
+        <text fg={colors.border}>
+          <span fg={colors.info}>[Tab]</span> Next {"  "}
+          <span fg={colors.info}>[Enter]</span> Save {"  "}
+          <span fg={colors.info}>[Esc]</span> Cancel
         </text>
       </box>
     </box>

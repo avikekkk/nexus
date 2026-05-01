@@ -8,6 +8,7 @@ import { parseConnectionUrl } from "../../db/url.ts"
 import { getRedisTypeIcon } from "../../utils/redisIcons.ts"
 import { isSubmitKey } from "../../utils/keyInput.ts"
 import { wrapDbTypeRows } from "./dbTypeRows.ts"
+import { useTheme } from "../../theme/ThemeContext.tsx"
 
 interface DatabasePickerProps {
   connectionId: string
@@ -25,6 +26,7 @@ const SEARCH_DEBOUNCE_MS = 300
 
 export function DatabasePicker({ connectionId, connectionName, database, mode = "select", width: _width, left, top, onClose }: DatabasePickerProps) {
   const { state, setVisibleDatabases, openCollection, updateConnection, getDriver, log } = useApp()
+  const { colors } = useTheme()
 
   // Tab state: 'databases' or 'edit'
   const [activeTab, setActiveTab] = useState<"databases" | "edit">("databases")
@@ -71,6 +73,12 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   ]
   const dbTypeRows = wrapDbTypeRows(DB_TYPES, 30)
   const EDIT_FIELD_COUNT = 9
+  const focusBorder = colors.purple
+  const activeLabel = colors.info
+  const selectedChipBg = colors.surfaceStrong
+  const selectedChipFg = colors.textBright
+  const activeTabBg = colors.surfaceStrong
+  const hintKeyColor = colors.info
 
   const isSearch = mode === "search"
   const title = isSearch ? ` Search: ${database} ` : activeTab === "databases" ? " Select Databases " : " Edit Connection "
@@ -416,8 +424,8 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       flexDirection="column"
       border
       borderStyle="rounded"
-      borderColor="#7aa2f7"
-      backgroundColor="#1a1b26"
+      borderColor={focusBorder}
+      backgroundColor={colors.background}
       title={title}
       titleAlignment="center"
       zIndex={100}
@@ -426,16 +434,16 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       {!isSearch && (
         <box flexDirection="row" gap={2} paddingX={1} paddingTop={1}>
           <box
-            backgroundColor={activeTab === "databases" ? "#7aa2f7" : "#292e42"}
+            backgroundColor={activeTab === "databases" ? activeTabBg : colors.surface}
             paddingX={1}
           >
-            <text fg={activeTab === "databases" ? "#1a1b26" : "#a9b1d6"}> Databases </text>
+            <text fg={activeTab === "databases" ? selectedChipFg : colors.text}> Databases </text>
           </box>
           <box
-            backgroundColor={activeTab === "edit" ? "#7aa2f7" : "#292e42"}
+            backgroundColor={activeTab === "edit" ? activeTabBg : colors.surface}
             paddingX={1}
           >
-            <text fg={activeTab === "edit" ? "#1a1b26" : "#a9b1d6"}> Edit Connection </text>
+            <text fg={activeTab === "edit" ? selectedChipFg : colors.text}> Edit Connection </text>
           </box>
         </box>
       )}
@@ -444,20 +452,20 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
       {activeTab === "databases" && (
         <box flexDirection="column" padding={1} gap={0} flexGrow={1}>
         <box flexDirection="row" justifyContent="space-between" width="100%">
-          <text fg="#a9b1d6">{infoText}</text>
+          <text fg={colors.text}>{infoText}</text>
           {!searchMode && searchQuery && (
             <text>
-              <span fg="#7aa2f7">⌕ </span>
-              <span fg="#565f89">"</span>
-              <span fg="#9ece6a">{searchQuery}</span>
-              <span fg="#565f89">"</span>
+              <span fg={hintKeyColor}>⌕ </span>
+              <span fg={colors.muted}>"</span>
+              <span fg={colors.success}>{searchQuery}</span>
+              <span fg={colors.muted}>"</span>
             </text>
           )}
         </box>
 
         {searchMode && (
           <box flexDirection="row" marginTop={1} marginBottom={1} gap={1}>
-            <text fg="#565f89">Search:</text>
+            <text fg={colors.muted}>Search:</text>
             <input
               value={searchQuery}
               onChange={(value) => {
@@ -467,7 +475,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
               placeholder="Type to filter..."
               focused={true}
               width={30}
-              backgroundColor="#16161e"
+              backgroundColor={colors.backgroundMuted}
             />
           </box>
         )}
@@ -478,7 +486,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
             const isSelected = !isSearch && selected.has(item)
             const isCursor = realIndex === cursorIndex
             const checkmark = isSearch ? "◦" : isSelected ? "✓" : " "
-            const checkColor = isSearch ? "#565f89" : isSelected ? "#9ece6a" : "#565f89"
+            const checkColor = isSearch ? colors.muted : isSelected ? colors.success : colors.muted
 
             // Get Redis type icon for search mode — always show for redis so alignment is consistent
             let typeIcon = ""
@@ -498,22 +506,22 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
                 key={item}
                 flexDirection="row"
                 height={1}
-                backgroundColor={isCursor ? "#283457" : undefined}
+                backgroundColor={isCursor ? colors.surfaceAlt : undefined}
                 width="100%"
               >
                 <text fg={checkColor}>[{checkmark}]</text>
-                <text fg="#c0caf5">{typeIcon ? `${typeIcon} ` : " "}{displayName}</text>
+                <text fg={colors.textBright}>{typeIcon ? `${typeIcon} ` : " "}{displayName}</text>
               </box>
             )
           })}
           {displayItems.length === 0 && !searchLoading && (
             <box flexDirection="row" width="100%">
-              <text fg="#565f89">  No items found</text>
+              <text fg={colors.muted}>  No items found</text>
             </box>
           )}
           {searchLoading && displayItems.length === 0 && (
             <box flexDirection="row" width="100%">
-              <text fg="#565f89">  Loading...</text>
+              <text fg={colors.muted}>  Loading...</text>
             </box>
           )}
         </box>
@@ -521,25 +529,25 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
         <box paddingX={0} marginTop={1} flexDirection="column" flexShrink={0}>
           {isSearch ? (
             <>
-              <text fg="#414868">
-                <span fg="#565f89">[Enter]</span> Open {"  "}
-                <span fg="#565f89">[/]</span> Search
+              <text fg={colors.border}>
+                <span fg={hintKeyColor}>[Enter]</span> Open {"  "}
+                <span fg={hintKeyColor}>[/]</span> Search
               </text>
-              <text fg="#414868">
-                <span fg="#565f89">[j/k]</span> Navigate {"  "}
-                <span fg="#565f89">[Esc]</span> Close
+              <text fg={colors.border}>
+                <span fg={hintKeyColor}>[j/k]</span> Navigate {"  "}
+                <span fg={hintKeyColor}>[Esc]</span> Close
               </text>
             </>
         ) : (
           <>
-            <text fg="#414868">
-              <span fg="#565f89">[Space]</span> Toggle {"  "}
-              <span fg="#565f89">[a]</span> Check/Uncheck All
+            <text fg={colors.border}>
+              <span fg={hintKeyColor}>[Space]</span> Toggle {"  "}
+              <span fg={hintKeyColor}>[a]</span> Check/Uncheck All
             </text>
-            <text fg="#414868">
-              <span fg="#565f89">[Tab]</span> Edit {"  "}
-              <span fg="#565f89">[/]</span> Search {"  "}
-              <span fg="#565f89">[Esc]</span> Close
+            <text fg={colors.border}>
+              <span fg={hintKeyColor}>[Tab]</span> Edit {"  "}
+              <span fg={hintKeyColor}>[/]</span> Search {"  "}
+              <span fg={hintKeyColor}>[Esc]</span> Close
             </text>
           </>
         )}
@@ -552,7 +560,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
         <box flexDirection="column" padding={1} gap={0} flexGrow={1}>
           {/* Name */}
           <box flexDirection="row" gap={1}>
-            <text width={11} fg={editFocusIndex === 0 ? "#7aa2f7" : "#565f89"}>
+            <text width={11} fg={editFocusIndex === 0 ? activeLabel : colors.muted}>
               Name
             </text>
             <input
@@ -561,15 +569,15 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
               placeholder="My Database"
               focused={editFocusIndex === 0}
               width={30}
-              backgroundColor="#16161e"
-              focusedBackgroundColor="#292e42"
-              textColor="#c0caf5"
+              backgroundColor={colors.backgroundMuted}
+              focusedBackgroundColor={colors.surface}
+              textColor={colors.textBright}
             />
           </box>
 
           {/* Type */}
           <box flexDirection="row" gap={1}>
-            <text width={11} fg={editFocusIndex === 1 ? "#7aa2f7" : "#565f89"}>
+            <text width={11} fg={editFocusIndex === 1 ? activeLabel : colors.muted}>
               Type
             </text>
             <box flexDirection="column" width={30}>
@@ -578,8 +586,8 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
                   {row.map((t) => (
                     <text
                       key={t.value}
-                      fg={editDbType === t.value ? "#1a1b26" : "#a9b1d6"}
-                      bg={editDbType === t.value ? "#7aa2f7" : "#292e42"}
+                      fg={editDbType === t.value ? selectedChipFg : colors.text}
+                      bg={editDbType === t.value ? selectedChipBg : colors.surface}
                     >
                       {" "}
                       {t.name}{" "}
@@ -592,7 +600,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
 
           {/* URL */}
           <box flexDirection="row" gap={1}>
-            <text width={11} fg={editFocusIndex === 2 ? "#7aa2f7" : "#565f89"}>
+            <text width={11} fg={editFocusIndex === 2 ? activeLabel : colors.muted}>
               URL
             </text>
             <input
@@ -601,9 +609,9 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
               placeholder="mongodb://user:pass@host:port/db"
               focused={editFocusIndex === 2}
               width={30}
-              backgroundColor="#16161e"
-              focusedBackgroundColor="#292e42"
-              textColor="#c0caf5"
+              backgroundColor={colors.backgroundMuted}
+              focusedBackgroundColor={colors.surface}
+              textColor={colors.textBright}
             />
           </box>
 
@@ -611,7 +619,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
           {hasEditUrl && editUrlError ? (
             <box flexDirection="row" gap={1}>
               <text width={11}>{" "}</text>
-              <text fg="#f7768e" width={30}>
+              <text fg={colors.error} width={30}>
                 {editUrlError}
               </text>
             </box>
@@ -619,7 +627,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
 
           {/* Host */}
           <box flexDirection="row" gap={1}>
-            <text width={11} fg={hasEditUrl ? "#414868" : editFocusIndex === 3 ? "#7aa2f7" : "#565f89"}>
+            <text width={11} fg={hasEditUrl ? colors.border : editFocusIndex === 3 ? activeLabel : colors.muted}>
               Host
             </text>
             <input
@@ -628,15 +636,15 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
               placeholder="localhost"
               focused={!hasEditUrl && editFocusIndex === 3}
               width={30}
-              backgroundColor="#16161e"
-              focusedBackgroundColor={hasEditUrl ? "#16161e" : "#292e42"}
-              textColor={hasEditUrl ? "#414868" : "#c0caf5"}
+              backgroundColor={colors.backgroundMuted}
+              focusedBackgroundColor={hasEditUrl ? colors.backgroundMuted : colors.surface}
+              textColor={hasEditUrl ? colors.border : colors.textBright}
             />
           </box>
 
           {/* Port */}
           <box flexDirection="row" gap={1}>
-            <text width={11} fg={hasEditUrl ? "#414868" : editFocusIndex === 4 ? "#7aa2f7" : "#565f89"}>
+            <text width={11} fg={hasEditUrl ? colors.border : editFocusIndex === 4 ? activeLabel : colors.muted}>
               Port
             </text>
             <input
@@ -645,15 +653,15 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
               placeholder={String(DEFAULT_PORTS[editDbType])}
               focused={!hasEditUrl && editFocusIndex === 4}
               width={30}
-              backgroundColor="#16161e"
-              focusedBackgroundColor={hasEditUrl ? "#16161e" : "#292e42"}
-              textColor={hasEditUrl ? "#414868" : "#c0caf5"}
+              backgroundColor={colors.backgroundMuted}
+              focusedBackgroundColor={hasEditUrl ? colors.backgroundMuted : colors.surface}
+              textColor={hasEditUrl ? colors.border : colors.textBright}
             />
           </box>
 
           {/* Username */}
           <box flexDirection="row" gap={1}>
-            <text width={11} fg={hasEditUrl ? "#414868" : editFocusIndex === 5 ? "#7aa2f7" : "#565f89"}>
+            <text width={11} fg={hasEditUrl ? colors.border : editFocusIndex === 5 ? activeLabel : colors.muted}>
               Username
             </text>
             <input
@@ -662,15 +670,15 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
               placeholder="optional"
               focused={!hasEditUrl && editFocusIndex === 5}
               width={30}
-              backgroundColor="#16161e"
-              focusedBackgroundColor={hasEditUrl ? "#16161e" : "#292e42"}
-              textColor={hasEditUrl ? "#414868" : "#c0caf5"}
+              backgroundColor={colors.backgroundMuted}
+              focusedBackgroundColor={hasEditUrl ? colors.backgroundMuted : colors.surface}
+              textColor={hasEditUrl ? colors.border : colors.textBright}
             />
           </box>
 
           {/* Password */}
           <box flexDirection="row" gap={1}>
-            <text width={11} fg={hasEditUrl ? "#414868" : editFocusIndex === 6 ? "#7aa2f7" : "#565f89"}>
+            <text width={11} fg={hasEditUrl ? colors.border : editFocusIndex === 6 ? activeLabel : colors.muted}>
               Password
             </text>
             <input
@@ -679,22 +687,22 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
               placeholder="optional"
               focused={!hasEditUrl && editFocusIndex === 6}
               width={30}
-              backgroundColor="#16161e"
-              focusedBackgroundColor={hasEditUrl ? "#16161e" : "#292e42"}
-              textColor={hasEditUrl ? "#414868" : "#c0caf5"}
+              backgroundColor={colors.backgroundMuted}
+              focusedBackgroundColor={hasEditUrl ? colors.backgroundMuted : colors.surface}
+              textColor={hasEditUrl ? colors.border : colors.textBright}
             />
           </box>
 
           {/* TLS */}
           <box flexDirection="row" gap={1}>
-            <text width={11} fg={editFocusIndex === 7 ? "#7aa2f7" : "#565f89"}>
+            <text width={11} fg={editFocusIndex === 7 ? activeLabel : colors.muted}>
               TLS/SSL
             </text>
             <box width={30} flexDirection="row" gap={1}>
-              <text fg={editFocusIndex === 7 ? "#1a1b26" : "#a9b1d6"} bg={editFocusIndex === 7 ? "#7aa2f7" : "#292e42"}>
+              <text fg={editFocusIndex === 7 ? selectedChipFg : colors.text} bg={editFocusIndex === 7 ? selectedChipBg : colors.surface}>
                 {editTls ? " Enabled " : " Disabled "}
               </text>
-              <text fg="#565f89">(Space/Enter)</text>
+              <text fg={colors.muted}>(Space/Enter)</text>
             </box>
           </box>
 
@@ -703,22 +711,22 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
             <text width={11}>{" "}</text>
             <box
               width={26}
-              backgroundColor={editFocusIndex === 8 ? "#7aa2f7" : "#292e42"}
+              backgroundColor={editFocusIndex === 8 ? selectedChipBg : colors.surface}
               justifyContent="center"
             >
-              <text fg={editFocusIndex === 8 ? "#1a1b26" : "#a9b1d6"}> Save </text>
+              <text fg={editFocusIndex === 8 ? selectedChipFg : colors.text}> Save </text>
             </box>
           </box>
 
           {/* Hints */}
           <box paddingX={0} marginTop={1} flexDirection="column" flexShrink={0}>
-            <text fg="#414868">
-              <span fg="#565f89">[↑↓]</span> Navigate {"  "}
-              <span fg="#565f89">[Enter]</span> Save
+            <text fg={colors.border}>
+              <span fg={hintKeyColor}>[↑↓]</span> Navigate {"  "}
+              <span fg={hintKeyColor}>[Enter]</span> Save
             </text>
-            <text fg="#414868">
-              <span fg="#565f89">[Tab]</span> Switch Tab {"  "}
-              <span fg="#565f89">[Esc]</span> Cancel
+            <text fg={colors.border}>
+              <span fg={hintKeyColor}>[Tab]</span> Switch Tab {"  "}
+              <span fg={hintKeyColor}>[Esc]</span> Cancel
             </text>
           </box>
         </box>
