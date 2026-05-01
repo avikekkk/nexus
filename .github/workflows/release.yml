@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils-aarch64-linux-gnu zip
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --os='*' --cpu='*'
+
+      - name: Typecheck
+        run: bunx tsc --noEmit
+
+      - name: Test
+        run: bun test
+
+      - name: Build binaries
+        run: bun run build:bin:all
+
+      - name: Package release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist
+
+          for artifact in build/nexus-*; do
+            name="$(basename "$artifact")"
+
+            if [[ "$name" == *.exe ]]; then
+              zip -9 -j "dist/${name}.zip" "$artifact"
+            else
+              tar -C build -czf "dist/${name}.tar.gz" "$name"
+            fi
+          done
+
+          sha256sum dist/* > dist/SHA256SUMS.txt
+
+      - name: Generate changelog
+        run: bun scripts/release-notes.ts "$GITHUB_REF_NAME" > RELEASE_NOTES.md
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Nexus ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          files: |
+            dist/*
+          fail_on_unmatched_files: true

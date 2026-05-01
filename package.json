@@ -6,14 +6,16 @@
   "scripts": {
     "start": "bun run src/index.tsx",
     "dev": "bun --watch run src/index.tsx",
-    "build:bin": "bun run build:bin:deps && bun run build:bin:linux-x64 && bun run build:bin:linux-arm64 && bun run build:bin:macos-x64 && bun run build:bin:macos-arm64 && bun run build:bin:windows-x64 && bun run build:bin:windows-arm64",
+    "build:bin": "bun run build:bin:deps && bun run build:bin:all",
+    "build:bin:all": "bun run build:bin:linux-x64 && bun run build:bin:linux-arm64 && bun run build:bin:macos-x64 && bun run build:bin:macos-arm64 && bun run build:bin:windows-x64 && bun run build:bin:windows-arm64",
     "build:bin:deps": "bun install --os='*' --cpu='*'",
-    "build:bin:linux-x64": "bun build src/index.tsx --compile --target=bun-linux-x64 --outfile build/nexus-linux-x64",
-    "build:bin:linux-arm64": "bun build src/index.tsx --compile --target=bun-linux-arm64 --outfile build/nexus-linux-arm64",
-    "build:bin:macos-x64": "bun build src/index.tsx --compile --target=bun-darwin-x64 --outfile build/nexus-macos-x64",
-    "build:bin:macos-arm64": "bun build src/index.tsx --compile --target=bun-darwin-arm64 --outfile build/nexus-macos-arm64",
-    "build:bin:windows-x64": "bun build src/index.tsx --compile --target=bun-windows-x64 --outfile build/nexus-windows-x64.exe",
-    "build:bin:windows-arm64": "bun build src/index.tsx --compile --target=bun-windows-arm64 --outfile build/nexus-windows-arm64.exe"
+    "build:bin:linux-x64": "bun scripts/build-bin.ts bun-linux-x64 build/nexus-linux-x64",
+    "build:bin:linux-arm64": "bun scripts/build-bin.ts bun-linux-arm64 build/nexus-linux-arm64",
+    "build:bin:macos-x64": "bun scripts/build-bin.ts bun-darwin-x64 build/nexus-macos-x64",
+    "build:bin:macos-arm64": "bun scripts/build-bin.ts bun-darwin-arm64 build/nexus-macos-arm64",
+    "build:bin:windows-x64": "bun scripts/build-bin.ts bun-windows-x64 build/nexus-windows-x64.exe",
+    "build:bin:windows-arm64": "bun scripts/build-bin.ts bun-windows-arm64 build/nexus-windows-arm64.exe",
+    "release:notes": "bun scripts/release-notes.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
