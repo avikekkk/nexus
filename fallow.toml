@@ -1,0 +1,7 @@
+entry = ["src/index.tsx", "tests/**/*.test.ts"]
+
+[health]
+ignore = ["tests/**"]
+
+[duplicates]
+ignore = ["tests/**"]

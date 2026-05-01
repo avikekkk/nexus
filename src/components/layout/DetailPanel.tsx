@@ -32,7 +32,7 @@ export function DetailPanel({
   dbType,
 }: DetailPanelProps) {
   const { colors } = useTheme()
-  const borderColor = focused ? colors.purple : colors.border
+  const borderColor = focused ? colors.accent : colors.border
   const [value, setValue] = useState(() => stringifyValue(originalValue))
   const [cursorPos, setCursorPos] = useState(() => stringifyValue(originalValue).length)
   const [error, setError] = useState<string | null>(null)

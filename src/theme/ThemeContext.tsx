@@ -1,54 +1,81 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react"
+import { createContext, use, useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { loadTheme, saveTheme } from "../state/theme.ts"
-import { getNextThemeName, THEMES, type ThemeColors, type ThemeDefinition, type ThemeName } from "./themes.ts"
+import { THEMES, type ThemeColors, type ThemeDefinition, type ThemeName } from "./themes.ts"
+import {
+  cancelThemePreview,
+  commitThemeSession,
+  createThemeSessionState,
+  cycleThemeSession,
+  getActiveThemeName,
+  hydrateThemeSession,
+  previewThemeSession,
+} from "./themeSession.ts"
 
 interface ThemeContextValue {
   themeName: ThemeName
+  committedThemeName: ThemeName
   theme: ThemeDefinition
   colors: ThemeColors
-  setTheme: (themeName: ThemeName) => void
+  isPreviewing: boolean
+  previewTheme: (themeName: ThemeName) => void
+  commitTheme: (themeName: ThemeName) => void
+  cancelPreview: () => void
   cycleTheme: () => void
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [themeName, setThemeName] = useState<ThemeName>("tokyo-night")
-  const [hydrated, setHydrated] = useState(false)
+  const [themeState, setThemeState] = useState(createThemeSessionState)
 
   useEffect(() => {
-    loadTheme()
-      .then((stored) => {
-        if (stored) {
-          setThemeName(stored)
-        }
-      })
-      .finally(() => {
-        setHydrated(true)
-      })
+    loadTheme().then((stored) => {
+      if (stored) {
+        setThemeState((state) => hydrateThemeSession(state, stored))
+      }
+    })
   }, [])
 
-  useEffect(() => {
-    if (!hydrated) return
+  const previewTheme = useCallback((themeName: ThemeName) => {
+    setThemeState((state) => previewThemeSession(state, themeName))
+  }, [])
+
+  const commitTheme = useCallback((themeName: ThemeName) => {
+    setThemeState((state) => commitThemeSession(state, themeName))
     saveTheme(themeName).catch(() => {})
-  }, [themeName, hydrated])
+  }, [])
+
+  const cancelPreview = useCallback(() => {
+    setThemeState(cancelThemePreview)
+  }, [])
+
+  const cycleTheme = useCallback(() => {
+    const nextState = cycleThemeSession(themeState)
+    setThemeState(nextState)
+    saveTheme(nextState.committedThemeName).catch(() => {})
+  }, [themeState])
 
   const value = useMemo<ThemeContextValue>(() => {
+    const themeName = getActiveThemeName(themeState)
     const theme = THEMES[themeName]
     return {
       themeName,
+      committedThemeName: themeState.committedThemeName,
       theme,
       colors: theme.colors,
-      setTheme: setThemeName,
-      cycleTheme: () => setThemeName((current) => getNextThemeName(current)),
+      isPreviewing: themeState.previewThemeName !== null,
+      previewTheme,
+      commitTheme,
+      cancelPreview,
+      cycleTheme,
     }
-  }, [themeName])
+  }, [themeState, previewTheme, commitTheme, cancelPreview, cycleTheme])
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }
 
 export function useTheme(): ThemeContextValue {
-  const ctx = useContext(ThemeContext)
+  const ctx = use(ThemeContext)
   if (!ctx) throw new Error("useTheme must be used within ThemeProvider")
   return ctx
 }

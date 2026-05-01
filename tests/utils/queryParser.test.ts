@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { ObjectId } from "mongodb"
-import { parseMongoExtendedJson, parseMongoFilter } from "./queryParser.ts"
+import { parseMongoExtendedJson, parseMongoFilter } from "../../src/utils/queryParser.ts"
 
 describe("parseMongoFilter", () => {
   test("parses ObjectId shell literal in filter", () => {

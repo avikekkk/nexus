@@ -2,41 +2,70 @@ import { useEffect, useRef, useState } from "react"
 import { useKeyboard } from "@opentui/react"
 import { CenteredModal } from "./CenteredModal.tsx"
 import { useTheme } from "../../theme/ThemeContext.tsx"
-import { THEME_ORDER, THEMES, type ThemeName } from "../../theme/themes.ts"
+import { THEME_ORDER, THEMES, type ThemeColors, type ThemeName } from "../../theme/themes.ts"
 
 interface ThemePickerProps {
   visible: boolean
   width: number
   height: number
   currentTheme: ThemeName
+  committedTheme: ThemeName
   onPreview: (themeName: ThemeName) => void
   onSelect: (themeName: ThemeName) => void
   onCancel: () => void
 }
 
-export function ThemePicker({ visible, width, height, currentTheme, onPreview, onSelect, onCancel }: ThemePickerProps) {
+function ThemeSwatch({ colors }: { colors: ThemeColors }) {
+  return (
+    <text>
+      <span fg={colors.accent}>●</span>
+      <span fg={colors.success}>●</span>
+      <span fg={colors.warning}>●</span>
+      <span fg={colors.error}>●</span>
+      <span fg={colors.purple}>●</span>
+    </text>
+  )
+}
+
+export function ThemePicker({
+  visible,
+  width,
+  height,
+  currentTheme,
+  committedTheme,
+  onPreview,
+  onSelect,
+  onCancel,
+}: ThemePickerProps) {
   const { colors } = useTheme()
   const [selected, setSelected] = useState(0)
   const openedAtRef = useRef(0)
+  const lastPreviewRef = useRef<ThemeName | null>(null)
+  const initializedRef = useRef(false)
 
   useEffect(() => {
     if (!visible) return
     openedAtRef.current = Date.now()
+    lastPreviewRef.current = null
+    initializedRef.current = false
   }, [visible])
 
   useEffect(() => {
     if (!visible) return
-    const currentIndex = Math.max(0, THEME_ORDER.indexOf(currentTheme))
+    const currentIndex = Math.max(0, THEME_ORDER.indexOf(committedTheme))
     setSelected(currentIndex)
-  }, [visible])
+  }, [visible, committedTheme])
 
   useEffect(() => {
     if (!visible) return
     const themeName = THEME_ORDER[selected] ?? currentTheme
-    if (themeName !== currentTheme) {
+    if (!initializedRef.current && themeName !== committedTheme) return
+    initializedRef.current = true
+    if (lastPreviewRef.current !== themeName) {
+      lastPreviewRef.current = themeName
       onPreview(themeName)
     }
-  }, [visible, selected, currentTheme, onPreview])
+  }, [visible, selected, currentTheme, committedTheme, onPreview])
 
   useKeyboard((key) => {
     if (!visible) return
@@ -70,33 +99,43 @@ export function ThemePicker({ visible, width, height, currentTheme, onPreview, o
   if (!visible) return null
 
   const selectedTheme = THEME_ORDER[selected] ?? currentTheme
-  const selectedLabel = THEMES[selectedTheme].label
+  const selectedDefinition = THEMES[selectedTheme]
 
   return (
     <CenteredModal
       width={width}
       height={height}
-      minWidth={40}
-      maxWidth={54}
+      minWidth={48}
+      maxWidth={66}
       minHeight={10}
-      maxHeight={14}
+      maxHeight={13}
       widthPadding={10}
       heightPadding={8}
       title="Theme"
       onPaste={() => {}}
     >
-      <box height={1} paddingX={1}>
-        <text fg={colors.muted}>Previewing: {selectedLabel}</text>
+      <box height={1} paddingX={1} flexDirection="row" justifyContent="space-between">
+        <text fg={colors.muted}>
+          Previewing: <span fg={colors.textBright}>{selectedDefinition.label}</span>
+        </text>
+        <ThemeSwatch colors={selectedDefinition.colors} />
       </box>
       <box height={1} paddingX={1}>
         <text fg={colors.border}>{"─".repeat(200)}</text>
       </box>
-      <box flexGrow={1} flexDirection="column" paddingX={1}>
+      <box height={THEME_ORDER.length} flexDirection="column" paddingX={1}>
         {THEME_ORDER.map((themeName, index) => {
           const active = index === selected
+          const theme = THEMES[themeName]
           return (
-            <box key={themeName} flexDirection="row" backgroundColor={active ? colors.surfaceAlt : undefined}>
-              <text fg={active ? colors.textBright : colors.text}>{THEMES[themeName].label}</text>
+            <box
+              key={themeName}
+              flexDirection="row"
+              justifyContent="space-between"
+              backgroundColor={active ? colors.surfaceAlt : undefined}
+            >
+              <text fg={active ? colors.textBright : colors.text}>{theme.label}</text>
+              <ThemeSwatch colors={theme.colors} />
             </box>
           )
         })}

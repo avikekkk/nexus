@@ -4,7 +4,13 @@ import type { ScrollBoxRenderable } from "@opentui/core"
 import { useApp } from "../../state/AppContext.tsx"
 import { flattenTreeNodes, TreeRow, type FlatNode } from "../sidebar/TreeBrowser.tsx"
 import { nodeId } from "../../state/tree.ts"
-import { DB_TYPE_ICONS, getIconColor, STATUS_INDICATORS } from "../../constants/dbIcons.ts"
+import {
+  createDbIconPalette,
+  DB_TYPE_ICONS,
+  getIconColor,
+  STATUS_INDICATORS,
+  type DbIconPalette,
+} from "../../constants/dbIcons.ts"
 import type { ThemeColors } from "../../theme/themes.ts"
 import { useTheme } from "../../theme/ThemeContext.tsx"
 
@@ -30,6 +36,7 @@ interface SidebarRowsProps {
   connections: ReturnType<typeof useApp>["state"]["connections"]
   allDatabases: ReturnType<typeof useApp>["state"]["allDatabases"]
   colors: ThemeColors
+  iconPalette: DbIconPalette
 }
 
 function truncateName(name: string, maxLen: number): string {
@@ -77,7 +84,16 @@ function SidebarFooter({ hasConnections, colors }: { hasConnections: boolean; co
   )
 }
 
-function SidebarRows({ width, focused, selectedIndex, rows, connections, allDatabases, colors }: SidebarRowsProps): ReactNode {
+function SidebarRows({
+  width,
+  focused,
+  selectedIndex,
+  rows,
+  connections,
+  allDatabases,
+  colors,
+  iconPalette,
+}: SidebarRowsProps): ReactNode {
   return (
     <>
       {rows.map((row, rowIndex) => {
@@ -88,7 +104,7 @@ function SidebarRows({ width, focused, selectedIndex, rows, connections, allData
         if (row.kind === "connection") {
           const conn = connections[row.index]!
           const typeIcon = DB_TYPE_ICONS[conn.config.type]
-          const iconColor = getIconColor(conn.config.type, conn.status, colors)
+          const iconColor = getIconColor(conn.config.type, conn.status, iconPalette)
           const allDbs = allDatabases.get(conn.config.id)
           const dbCount = allDbs ? allDbs.length : 0
           const dbCountLabel = dbCount > 0 ? ` (${dbCount})` : ""
@@ -110,7 +126,15 @@ function SidebarRows({ width, focused, selectedIndex, rows, connections, allData
           )
         }
 
-        return <TreeRow key={row.node.id} node={row.node} isSelected={isSelected} maxWidth={width - 4} />
+        return (
+          <TreeRow
+            key={row.node.id}
+            node={row.node}
+            isSelected={isSelected}
+            maxWidth={width - 4}
+            colors={colors}
+          />
+        )
       })}
     </>
   )
@@ -133,7 +157,8 @@ export function Sidebar({
   const { colors } = useTheme()
   const [selectedIndex, setSelectedIndex] = useState(0)
   const scrollRef = useRef<ScrollBoxRenderable | null>(null)
-  const borderColor = focused ? colors.purple : colors.border
+  const borderColor = focused ? colors.accent : colors.border
+  const iconPalette = useMemo(() => createDbIconPalette(colors), [colors])
 
   const treeState = {
     treeExpanded: state.treeExpanded,
@@ -362,6 +387,7 @@ export function Sidebar({
             connections={state.connections}
             allDatabases={state.allDatabases}
             colors={colors}
+            iconPalette={iconPalette}
           />
         </scrollbox>
       )}

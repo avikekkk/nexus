@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 
-import type { ConnectionConfig, ConnectionState } from "../db/types.ts"
-import { appReducer, type AppAction, type AppState } from "./AppContext.tsx"
+import type { ConnectionConfig, ConnectionState } from "../../src/db/types.ts"
+import { appReducer, type AppAction, type AppState } from "../../src/state/AppContext.tsx"
 
 function createConnection(config: ConnectionConfig, status: ConnectionState["status"], error?: string): ConnectionState {
   return { config, status, error }

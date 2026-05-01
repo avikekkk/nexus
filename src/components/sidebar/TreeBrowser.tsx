@@ -2,7 +2,7 @@ import { nodeId, type TreeNode } from "../../state/tree.ts"
 import type { ConnectionState, RedisKeyType, DbType } from "../../db/types.ts"
 import { getRedisTypeIcon } from "../../utils/redisIcons.ts"
 import { DB_TYPE_ICONS } from "../../constants/dbIcons.ts"
-import { useTheme } from "../../theme/ThemeContext.tsx"
+import type { ThemeColors } from "../../theme/themes.ts"
 
 const EXPANDED_ICON = "▾"
 const COLLAPSED_ICON = "▸"
@@ -174,12 +174,13 @@ export function TreeRow({
   node,
   isSelected,
   maxWidth,
+  colors,
 }: {
   node: FlatNode
   isSelected: boolean
   maxWidth?: number
+  colors: ThemeColors
 }) {
-  const { colors } = useTheme()
   const indent = "  ".repeat(node.depth)
   const bg = isSelected ? colors.surfaceAlt : "transparent"
   const fg = isSelected ? colors.textBright : colors.text

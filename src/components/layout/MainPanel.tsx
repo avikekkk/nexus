@@ -27,7 +27,7 @@ export function MainPanel({
 }: MainPanelProps) {
   const { state, dispatch, closeTab, nextTab, prevTab, fetchTabData, setTabFilter, setTabSort, getDriver } = useApp()
   const { colors } = useTheme()
-  const borderColor = focused ? colors.purple : colors.border
+  const borderColor = focused ? colors.accent : colors.border
   const { tabs, activeTabId, tabData, connections } = state
   const fetchedTabs = useRef(new Set<string>())
   const [filterBarFocused, setFilterBarFocused] = useState(false)

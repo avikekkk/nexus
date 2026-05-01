@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { insertWithAutoPair } from "./autoPair.ts"
+import { insertWithAutoPair } from "../../../src/query/editor/autoPair.ts"
 
 describe("insertWithAutoPair", () => {
   test("keeps quote autopair in empty context", () => {

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { mongoCompletionProvider } from "./mongo.ts"
-import { mysqlCompletionProvider } from "./mysql.ts"
-import { rankCompletionSuggestions } from "../ranking.ts"
-import { getCompletions } from "../engine.ts"
-import type { CompletionContext, CompletionSuggestion } from "../types.ts"
+import { mongoCompletionProvider } from "../../../../src/query/completion/providers/mongo.ts"
+import { mysqlCompletionProvider } from "../../../../src/query/completion/providers/mysql.ts"
+import { rankCompletionSuggestions } from "../../../../src/query/completion/ranking.ts"
+import { getCompletions } from "../../../../src/query/completion/engine.ts"
+import type { CompletionContext, CompletionSuggestion } from "../../../../src/query/completion/types.ts"
 
 function baseContext(overrides: Partial<CompletionContext>): CompletionContext {
   return {

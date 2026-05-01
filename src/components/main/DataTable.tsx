@@ -145,7 +145,7 @@ export function DataTable({
       dim: themeColors.muted,
       rowNum: themeColors.border,
       pageBg: themeColors.background,
-      pageActive: themeColors.purple,
+      pageActive: themeColors.accent,
       pageInactive: themeColors.muted,
       hintKey: themeColors.info,
       footerBg: themeColors.backgroundMuted,

@@ -69,7 +69,7 @@ export function CenteredModal({
         height={panelHeight}
         border
         borderStyle="rounded"
-        borderColor={colors.purple}
+        borderColor={colors.accent}
         backgroundColor={colors.background}
         title={` ${title} `}
         zIndex={90}

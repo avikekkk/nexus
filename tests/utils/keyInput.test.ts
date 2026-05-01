@@ -10,7 +10,7 @@ import {
   isSubmitKey,
   moveCursorWordLeft,
   moveCursorWordRight,
-} from "./keyInput.ts"
+} from "../../src/utils/keyInput.ts"
 
 describe("keyInput utils", () => {
   test("isSubmitKey supports return and enter", () => {

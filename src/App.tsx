@@ -17,7 +17,6 @@ import { ThemePicker } from "./components/layout/ThemePicker.tsx"
 import { emitPaste } from "./state/paste.ts"
 import type { DbType } from "./db/types.ts"
 import { useTheme } from "./theme/ThemeContext.tsx"
-import type { ThemeName } from "./theme/themes.ts"
 
 export type FocusZone = "sidebar" | "main" | "detail" | "querylog"
 
@@ -34,7 +33,7 @@ export function App() {
   const renderer = useRenderer()
   const { width, height } = useTerminalDimensions()
   const { state, addConnection, updateTabCell, openQueryConsole } = useApp()
-  const { themeName, theme, colors, setTheme } = useTheme()
+  const { themeName, committedThemeName, theme, colors, previewTheme, commitTheme, cancelPreview } = useTheme()
   const [focusZone, setFocusZone] = useState<FocusZone>("sidebar")
   const [showQueryLog, setShowQueryLog] = useState(true)
   const [detailState, setDetailState] = useState<DetailState | null>(null)
@@ -47,7 +46,6 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [showQueryDatabasePicker, setShowQueryDatabasePicker] = useState(false)
   const [showThemePicker, setShowThemePicker] = useState(false)
-  const [themeBeforePreview, setThemeBeforePreview] = useState<ThemeName | null>(null)
   const [isQueryInputFocused, setIsQueryInputFocused] = useState(false)
 
   const queryDatabaseOptions = useMemo<QueryDatabaseOption[]>(() => {
@@ -168,7 +166,6 @@ export function App() {
         shortcut: "Ctrl+T",
         run: () =>
           runCommand("theme-picker", () => {
-            setThemeBeforePreview(themeName)
             setShowThemePicker(true)
           }),
       },
@@ -181,7 +178,7 @@ export function App() {
     ]
 
     const rank = new Map(recentCommands.map((id, idx) => [id, idx]))
-    return [...base].sort((a, b) => {
+    return base.toSorted((a, b) => {
       const ra = rank.has(a.id) ? rank.get(a.id)! : 999
       const rb = rank.has(b.id) ? rank.get(b.id)! : 999
       return ra - rb
@@ -197,7 +194,6 @@ export function App() {
     state.connections,
     showToast,
     theme.label,
-    themeName,
   ])
 
   // Auto-copy selected text to clipboard when mouse selection finishes
@@ -249,7 +245,6 @@ export function App() {
 
     if (key.ctrl && key.name === "t") {
       if (isRepeat || hasBlockingModal) return
-      setThemeBeforePreview(themeName)
       setShowThemePicker(true)
       return
     }
@@ -491,18 +486,15 @@ export function App() {
         width={width}
         height={height}
         currentTheme={themeName}
-        onPreview={(previewTheme) => setTheme(previewTheme)}
+        committedTheme={committedThemeName}
+        onPreview={previewTheme}
         onSelect={(selectedTheme) => {
-          setTheme(selectedTheme)
+          commitTheme(selectedTheme)
           setShowThemePicker(false)
-          setThemeBeforePreview(null)
         }}
         onCancel={() => {
-          if (themeBeforePreview) {
-            setTheme(themeBeforePreview)
-          }
+          cancelPreview()
           setShowThemePicker(false)
-          setThemeBeforePreview(null)
         }}
       />
     </box>

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseEditedValue, stringifyValue, getTypeName } from "./detailValue.ts"
+import { parseEditedValue, stringifyValue, getTypeName } from "../../src/utils/detailValue.ts"
 
 describe("detailValue utils", () => {
   test("parseEditedValue parses numbers", () => {

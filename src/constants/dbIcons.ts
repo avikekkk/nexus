@@ -48,14 +48,26 @@ function getStatusColors(colors: ThemeColors): Record<ConnectionStatus, string> 
   }
 }
 
+export interface DbIconPalette {
+  dbTypeColors: Record<DbType, string>
+  statusColors: Record<ConnectionStatus, string>
+}
+
+export function createDbIconPalette(colors: ThemeColors): DbIconPalette {
+  return {
+    dbTypeColors: getDbTypeColors(colors),
+    statusColors: getStatusColors(colors),
+  }
+}
+
 /**
  * Get icon color based on connection status
  * For connected: use brand color
  * For other states: use status color
  */
-export function getIconColor(type: DbType, status: ConnectionStatus, colors: ThemeColors): string {
+export function getIconColor(type: DbType, status: ConnectionStatus, palette: DbIconPalette): string {
   if (status === "connected") {
-    return getDbTypeColors(colors)[type]
+    return palette.dbTypeColors[type]
   }
-  return getStatusColors(colors)[status]
+  return palette.statusColors[status]
 }

@@ -29,10 +29,14 @@ export function CommandPalette({ visible, width, height, commands, onClose }: Co
   const openedAtRef = useRef(0)
 
   const filtered = useMemo(() => {
-    const ranked = commands
-      .map((cmd) => ({ cmd, score: fuzzyScore(query, `${cmd.title} ${cmd.shortcut ?? ""}`) }))
-      .filter((item) => item.score > 0)
-      .sort((a, b) => b.score - a.score)
+    const ranked: { cmd: CommandItem; score: number }[] = []
+
+    for (const cmd of commands) {
+      const score = fuzzyScore(query, `${cmd.title} ${cmd.shortcut ?? ""}`)
+      if (score > 0) ranked.push({ cmd, score })
+    }
+
+    ranked.sort((a, b) => b.score - a.score)
     return ranked.map((r) => r.cmd)
   }, [commands, query])
 

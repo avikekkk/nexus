@@ -43,7 +43,7 @@ function getLevelColor(level: ConsoleEntry["level"], colors: ThemeColors): strin
 export function Console({ height, focused }: ConsoleProps) {
   const { state } = useApp()
   const { colors } = useTheme()
-  const borderColor = focused ? colors.purple : colors.border
+  const borderColor = focused ? colors.accent : colors.border
   const entries = state.consoleEntries
 
   return (

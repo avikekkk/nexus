@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { formatConnectionError } from "./errorFormatter.ts"
+import { formatConnectionError } from "../../src/utils/errorFormatter.ts"
 
 test("formats ENOTIMP error as timeout", () => {
   const error = new Error("getaddrinfo ENOTIMP")

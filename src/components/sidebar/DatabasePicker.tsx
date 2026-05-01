@@ -73,7 +73,7 @@ export function DatabasePicker({ connectionId, connectionName, database, mode = 
   ]
   const dbTypeRows = wrapDbTypeRows(DB_TYPES, 30)
   const EDIT_FIELD_COUNT = 9
-  const focusBorder = colors.purple
+  const focusBorder = colors.accent
   const activeLabel = colors.info
   const selectedChipBg = colors.surfaceStrong
   const selectedChipFg = colors.textBright
