@@ -16,9 +16,9 @@
 
 | Main view | Command panel |
 |:---|:---------------|
-| <img width="1920" height="1080" alt="image" src="assets/main.png" /> | <img width="1920" height="1080" alt="image" src="command panel.png" /> |
+| <img width="1920" height="1080" alt="image" src="assets/main.png" /> | <img width="1920" height="1080" alt="image" src="assets/command panel.png" /> |
 | Add connection | Themes |
-| <img width="1920" height="1080" alt="image" src="add connection.png" /> | <img width="1920" height="1080" alt="image" src="themes.png" /> |
+| <img width="1920" height="1080" alt="image" src="assets/add connection.png" /> | <img width="1920" height="1080" alt="image" src="assets/themes.png" /> |
 
 ## Features
 
