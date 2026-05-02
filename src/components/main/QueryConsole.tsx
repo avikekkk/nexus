@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useKeyboard } from "@opentui/react"
 import {
@@ -14,8 +15,10 @@ import { subscribePaste } from "../../state/paste.ts"
 import { CompletionMenu } from "../common/CompletionMenu.tsx"
 import { getCompletions } from "../../query/completion/engine.ts"
 import { deleteWithAutoPair, insertWithAutoPair } from "../../query/editor/autoPair.ts"
+import { formatQuery, highlightQueryLines, type QueryToken, type QueryTokenRole } from "../../query/editor/highlight.ts"
 import type { CompletionSuggestion } from "../../query/completion/types.ts"
 import type { DbType } from "../../db/types.ts"
+import type { ThemeColors } from "../../theme/themes.ts"
 import { useTheme } from "../../theme/ThemeContext.tsx"
 
 interface QueryConsoleProps {
@@ -40,6 +43,125 @@ interface ActiveCompletion {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
+}
+
+function getTokenColor(role: QueryTokenRole, colors: ThemeColors): string {
+  switch (role) {
+    case "keyword":
+      return colors.queryKeyword
+    case "function":
+      return colors.queryFunction
+    case "field":
+      return colors.queryField
+    case "string":
+      return colors.queryString
+    case "number":
+      return colors.queryNumber
+    case "operator":
+      return colors.queryOperator
+    case "comment":
+      return colors.queryComment
+    case "error":
+      return colors.error
+    case "text":
+      return colors.text
+  }
+}
+
+function renderToken(token: QueryToken, colors: ThemeColors): ReactNode {
+  return (
+    <span key={`${token.start}-${token.end}-${token.role}`} fg={getTokenColor(token.role, colors)}>
+      {token.text}
+    </span>
+  )
+}
+
+function renderLineTokens(tokens: QueryToken[], line: string, colors: ThemeColors): ReactNode {
+  if (line.length === 0) return " "
+  if (tokens.length === 0) return line
+  return tokens.map((token) => renderToken(token, colors))
+}
+
+function renderPlainCursorLine(line: string, cursorOffset: number, colors: ThemeColors): ReactNode {
+  const before = line.slice(0, cursorOffset)
+  const current = line[cursorOffset]
+  const after = line.slice(cursorOffset + (current ? 1 : 0))
+
+  return (
+    <>
+      {before}
+      {current ? (
+        <span fg={colors.background} bg={colors.accent}>
+          {current}
+        </span>
+      ) : (
+        <span fg={colors.accent}>█</span>
+      )}
+      {after}
+    </>
+  )
+}
+
+function renderCursorLine(tokens: QueryToken[], line: string, lineStart: number, cursorPos: number, colors: ThemeColors): ReactNode {
+  const cursorOffset = clamp(cursorPos - lineStart, 0, line.length)
+  const cursorAbsolute = lineStart + cursorOffset
+  const parts: ReactNode[] = []
+  let insertedCursor = false
+
+  if (line.length === 0) {
+    return <span fg={colors.accent}>█</span>
+  }
+
+  if (tokens.length === 0) {
+    return renderPlainCursorLine(line, cursorOffset, colors)
+  }
+
+  for (const token of tokens) {
+    const color = getTokenColor(token.role, colors)
+
+    if (!insertedCursor && cursorAbsolute >= token.start && cursorAbsolute < token.end) {
+      const before = line.slice(token.start - lineStart, cursorAbsolute - lineStart)
+      const current = line[cursorOffset] ?? ""
+      const after = line.slice(cursorOffset + 1, token.end - lineStart)
+
+      if (before) {
+        parts.push(
+          <span key={`${token.start}-before`} fg={color}>
+            {before}
+          </span>
+        )
+      }
+
+      parts.push(
+        <span key={`${cursorAbsolute}-cursor`} fg={colors.background} bg={colors.accent}>
+          {current}
+        </span>
+      )
+
+      if (after) {
+        parts.push(
+          <span key={`${token.start}-after`} fg={color}>
+            {after}
+          </span>
+        )
+      }
+
+      insertedCursor = true
+      continue
+    }
+
+    parts.push(renderToken(token, colors))
+  }
+
+  if (!insertedCursor) {
+    parts.push(
+      <span key={`${cursorAbsolute}-cursor-end`} fg={colors.accent}>
+        █
+      </span>
+    )
+  }
+
+  return parts
 }
 
 export function QueryConsole({
@@ -75,6 +197,7 @@ export function QueryConsole({
   const beforeCursor = query.slice(0, cursorPos)
   const cursorLine = beforeCursor.split("\n").length - 1
   const cursorColumn = beforeCursor.length - (beforeCursor.lastIndexOf("\n") + 1)
+  const highlightedLines = useMemo(() => highlightQueryLines(query, dbType), [query, dbType])
 
   const closeCompletion = useCallback(() => {
     setCompletion(null)
@@ -171,6 +294,15 @@ export function QueryConsole({
         closeCompletion()
       } else {
         onBlur()
+      }
+      return
+    }
+
+    if (key.ctrl && key.name === "f") {
+      const formatted = formatQuery(query, dbType, cursorPos)
+      if (formatted.changed) {
+        updateQuery(formatted.query, formatted.cursor)
+        closeCompletion()
       }
       return
     }
@@ -280,7 +412,7 @@ export function QueryConsole({
 
   return (
     <box flexGrow={1} flexDirection="column" padding={1} onPaste={handlePaste}>
-      <text fg={colors.muted}>Enter run • Ctrl+Enter newline • Esc exit input</text>
+      <text fg={colors.muted}>Enter run • Ctrl+Enter newline • Ctrl+F format • Esc exit input</text>
       <box height={1}>
         <text fg={colors.border}>{"─".repeat(200)}</text>
       </box>
@@ -295,34 +427,25 @@ export function QueryConsole({
         ) : (
           lines.map((line, lineIndex) => {
             const lineKey = `line-${lineStarts[lineIndex] ?? lineIndex}`
+            const highlightedLine = highlightedLines[lineIndex]
+            const tokens = highlightedLine?.tokens ?? []
+            const lineStart = highlightedLine?.start ?? lineStarts[lineIndex] ?? 0
 
             if (!focused || lineIndex !== cursorLine) {
               return (
                 <text key={lineKey} fg={colors.text}>
-                  {line || " "}
+                  {renderLineTokens(tokens, line, colors)}
                 </text>
               )
             }
 
             const safeColumn = clamp(cursorColumn, 0, line.length)
-            const before = line.slice(0, safeColumn)
-            const current = line[safeColumn]
-            const after = line.slice(safeColumn + (current ? 1 : 0))
-
             const completionLeft = Math.max(0, safeColumn)
 
             return (
               <box key={lineKey} flexDirection="column">
                 <text fg={colors.textBright}>
-                  {before}
-                  {current ? (
-                    <span fg={colors.background} bg={colors.accent}>
-                      {current}
-                    </span>
-                  ) : (
-                    <span fg={colors.accent}>█</span>
-                  )}
-                  {after}
+                  {renderCursorLine(tokens, line, lineStart, cursorPos, colors)}
                 </text>
                 {completion && completion.items.length > 0 && (
                   <box flexDirection="row">

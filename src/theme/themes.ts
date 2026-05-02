@@ -25,6 +25,13 @@ export interface ThemeColors {
   error: string
   purple: string
   teal: string
+  queryKeyword: string
+  queryFunction: string
+  queryField: string
+  queryString: string
+  queryNumber: string
+  queryOperator: string
+  queryComment: string
 }
 
 export interface ThemeDefinition {
@@ -57,6 +64,13 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       error: "#f7768e",
       purple: "#bb9af7",
       teal: "#73daca",
+      queryKeyword: "#bb9af7",
+      queryFunction: "#7dcfff",
+      queryField: "#73daca",
+      queryString: "#9ece6a",
+      queryNumber: "#ff9e64",
+      queryOperator: "#e0af68",
+      queryComment: "#565f89",
     },
   },
   "catppuccin-latte": {
@@ -82,6 +96,13 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       error: "#d20f39",
       purple: "#8839ef",
       teal: "#179299",
+      queryKeyword: "#8839ef",
+      queryFunction: "#1e66f5",
+      queryField: "#179299",
+      queryString: "#40a02b",
+      queryNumber: "#fe640b",
+      queryOperator: "#dc8a78",
+      queryComment: "#7c7f93",
     },
   },
   "catppuccin-frappe": {
@@ -107,6 +128,13 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       error: "#e78284",
       purple: "#ca9ee6",
       teal: "#81c8be",
+      queryKeyword: "#ca9ee6",
+      queryFunction: "#8caaee",
+      queryField: "#81c8be",
+      queryString: "#a6d189",
+      queryNumber: "#ef9f76",
+      queryOperator: "#eebebe",
+      queryComment: "#838ba7",
     },
   },
   "catppuccin-macchiato": {
@@ -132,6 +160,13 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       error: "#ed8796",
       purple: "#c6a0f6",
       teal: "#8bd5ca",
+      queryKeyword: "#c6a0f6",
+      queryFunction: "#8aadf4",
+      queryField: "#8bd5ca",
+      queryString: "#a6da95",
+      queryNumber: "#f5a97f",
+      queryOperator: "#f0c6c6",
+      queryComment: "#8087a2",
     },
   },
   "catppuccin-mocha": {
@@ -157,6 +192,13 @@ export const THEMES: Record<ThemeName, ThemeDefinition> = {
       error: "#f38ba8",
       purple: "#cba6f7",
       teal: "#94e2d5",
+      queryKeyword: "#cba6f7",
+      queryFunction: "#89b4fa",
+      queryField: "#94e2d5",
+      queryString: "#a6e3a1",
+      queryNumber: "#fab387",
+      queryOperator: "#f5c2e7",
+      queryComment: "#7f849c",
     },
   },
 }
