@@ -11,19 +11,14 @@
 [![Elastic](https://img.shields.io/badge/-ElasticSearch-005571?style=flat&logo=elasticsearch)](#)
 
 ![Nexus Showcase](assets/showcase.gif)
-
-```
-╭─ Connections ─────╮╭─ [users] [orders] [keys:*] ──────────────────╮
-│ ▸ Production Mongo ││ Filter: { status: "active" }  Sort: _id ↓   │
-│   ▸ mydb           ││─────────────────────────────────────────────││
-│     ◦ users    120 ││ _id    │ name     │ email          │ age    │
-│     ◦ orders   3.2k││ 64a..  │ Alice    │ alice@mail.com │ 28     │
-│ ▸ Local Redis      ││ 64b..  │ Bob      │ bob@mail.com   │ 34     │
-│ + Add Connection   ││                                             │
-╰────────────────────╯╰─────────────────────────────────────────────╯
-```
-
 </div>
+
+
+| Main view | Command panel |
+|:---|:---------------|
+| <img width="1920" height="1080" alt="image" src="assets/main.png" /> | <img width="1920" height="1080" alt="image" src="command panel.png" /> |
+| Add connection | Themes |
+| <img width="1920" height="1080" alt="image" src="add connection.png" /> | <img width="1920" height="1080" alt="image" src="themes.png" /> |
 
 ## Features
 
