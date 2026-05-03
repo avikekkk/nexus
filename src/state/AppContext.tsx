@@ -5,7 +5,7 @@ import { loadConnections, saveConnections, generateId } from "./connections.ts"
 import { nodeId, type TreeNode } from "./tree.ts"
 import type { ConsoleEntry, LogLevel, LogSource } from "./console.ts"
 import { debug } from "../utils/debug.ts"
-import { formatConnectionError } from "../utils/errorFormatter.ts"
+import { formatConnectionError, formatRuntimeError } from "../utils/errorFormatter.ts"
 
 interface Tab {
   id: string
@@ -539,7 +539,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             })
             .catch((e) => {
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: [] })
-              const msg = e instanceof Error ? e.message : String(e)
+              const msg = formatRuntimeError(e)
               log("error", "query", `Failed to list databases: ${msg}`)
             })
             .finally(() => {
@@ -575,7 +575,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               debug(`[toggleExpand] Failed loading ${itemType} connection=${connectionId} database=${database}:`, e)
               dispatch({ type: "TREE_SET_CHILDREN", nodeId: nid, children: [] })
               dispatch({ type: "TREE_SET_NEXT_CURSOR", nodeId: nid, cursor: null })
-              const msg = e instanceof Error ? e.message : String(e)
+              const msg = formatRuntimeError(e)
               log("error", "query", `Failed to list ${itemType} in ${database}: ${msg}`)
             })
             .finally(() => {
@@ -732,7 +732,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         log("info", "query", `${result.query} — ${result.duration}ms, ${result.rows.length} rows`)
         return result
       } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e)
+        const msg = formatRuntimeError(e)
         dispatch({ type: "SET_TAB_DATA", tabId, data: { loading: false, error: msg } })
         const targetLabel = tab.kind === "query-console" ? tab.database : tab.collection
         log("error", "query", `Failed to query ${itemName} ${targetLabel}: ${msg}`)
@@ -833,7 +833,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           })
           .catch((e) => {
             debug(`[loadMoreChildren] Failed next page connection=${connectionId} database=${database}:`, e)
-            const msg = e instanceof Error ? e.message : String(e)
+            const msg = formatRuntimeError(e)
             log("error", "query", `Failed to load more items in ${database}: ${msg}`)
           })
           .finally(() => {

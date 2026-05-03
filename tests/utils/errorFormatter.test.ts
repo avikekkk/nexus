@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test"
-import { formatConnectionError } from "../../src/utils/errorFormatter.ts"
+import { formatConnectionError, formatRuntimeError } from "../../src/utils/errorFormatter.ts"
 
 test("formats ENOTIMP error as timeout", () => {
   const error = new Error("getaddrinfo ENOTIMP")
@@ -68,4 +68,11 @@ test("handles cryptic error codes", () => {
   const error = new Error("ECONNRESET")
   const formatted = formatConnectionError(error)
   expect(formatted).toContain("Please check your connection settings")
+})
+
+test("formats runtime errors without stack traces", () => {
+  const error = new Error("terminating connection due to administrator command")
+  error.stack = "Error: terminating connection due to administrator command\n    at parseErrorMessage (/node_modules/pg-protocol/dist/parser.js:305:26)"
+
+  expect(formatRuntimeError(error)).toBe("terminating connection due to administrator command")
 })

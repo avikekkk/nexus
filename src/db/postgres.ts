@@ -85,6 +85,13 @@ export function createPostgresDriver(): DbDriver {
   let baseConfig: ConnectionConfig | null = null
   const clients = new Map<string, Client>()
 
+  function markClientClosed(database: string, client: Client) {
+    if (clients.get(database) !== client) return
+
+    clients.delete(database)
+    connected = clients.size > 0
+  }
+
   async function getClient(database?: string): Promise<Client> {
     if (!baseConfig) {
       throw new Error("Not connected")
@@ -95,8 +102,11 @@ export function createPostgresDriver(): DbDriver {
     if (existing) return existing
 
     const client = new Client(buildConnectionConfig(baseConfig, targetDatabase))
+    client.once("end", () => markClientClosed(targetDatabase, client))
+    client.on("error", () => markClientClosed(targetDatabase, client))
     await client.connect()
     clients.set(targetDatabase, client)
+    connected = true
     return client
   }
 

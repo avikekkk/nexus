@@ -80,3 +80,13 @@ export function formatConnectionError(error: unknown, _connectionUri?: string): 
 
   return cleaned
 }
+
+export function formatRuntimeError(error: unknown): string {
+  const rawMessage = error instanceof Error ? error.message || error.stack || String(error) : String(error)
+  const firstLine = rawMessage
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line && !line.startsWith("at "))
+
+  return (firstLine ?? "Unknown error").replace(/^Error:\s*/i, "").trim()
+}
