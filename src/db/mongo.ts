@@ -9,7 +9,7 @@ import type {
   UpdateFieldOpts,
   UpdateFieldResult,
 } from "./types.ts"
-import { parseMongoExtendedJson, parseMongoFilter } from "../utils/queryParser.ts"
+import { canStartMongoRegexLiteral, parseMongoExtendedJson, parseMongoFilter, readMongoRegexLiteral } from "../utils/queryParser.ts"
 
 export function createMongoDriver(): DbDriver {
   let client: MongoClient | null = null
@@ -44,9 +44,10 @@ export function createMongoDriver(): DbDriver {
 
   interface ParsedMongoShellQuery {
     collection: string
-    operation: "find" | "findOne" | "countDocuments" | "aggregate"
+    operation: "find" | "findOne" | "countDocuments" | "aggregate" | "distinct"
     filter: Record<string, unknown>
     projection: Record<string, unknown> | null
+    distinctField: string | null
     sort: Record<string, 1 | -1>
     skip: number
     limit: number
@@ -72,6 +73,12 @@ export function createMongoDriver(): DbDriver {
 
       if (char === '"' || char === "'") {
         quote = char
+        continue
+      }
+
+      if (canStartMongoRegexLiteral(input, i)) {
+        const literal = readMongoRegexLiteral(input, i)
+        i = literal.end - 1
         continue
       }
 
@@ -134,6 +141,12 @@ export function createMongoDriver(): DbDriver {
           continue
         }
 
+        if (canStartMongoRegexLiteral(input, i)) {
+          const literal = readMongoRegexLiteral(input, i)
+          i = literal.end
+          continue
+        }
+
         if (char === "(") depth++
         if (char === ")") depth--
         i++
@@ -153,6 +166,22 @@ export function createMongoDriver(): DbDriver {
       throw new Error(`${method}() expects a non-negative integer`)
     }
     return Number.parseInt(value.trim(), 10)
+  }
+
+  function parseStringArg(value: string, method: string): string {
+    let parsed: unknown
+    try {
+      parsed = parseMongoExtendedJson(value.trim())
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      throw new Error(`${method}() string parse error: ${msg}`)
+    }
+
+    if (typeof parsed !== "string" || parsed.trim().length === 0) {
+      throw new Error(`${method}() expects a non-empty string field name`)
+    }
+
+    return parsed
   }
 
   function parseMongoShellQuery(rawQuery: string): ParsedMongoShellQuery {
@@ -181,6 +210,7 @@ export function createMongoDriver(): DbDriver {
     let operation: ParsedMongoShellQuery["operation"]
     let filter: Record<string, unknown> = {}
     let projection: Record<string, unknown> | null = null
+    let distinctField: string | null = null
     let pipeline: Array<Record<string, unknown>> = []
 
     if (firstCall.name === "find" || firstCall.name === "findOne") {
@@ -206,6 +236,25 @@ export function createMongoDriver(): DbDriver {
       operation = "countDocuments"
       if (firstCall.args) {
         const parsed = parseMongoFilter(firstCall.args)
+        if (parsed.error) {
+          throw new Error(`Filter parse error: ${parsed.error}`)
+        }
+        filter = parsed.filter ?? {}
+      }
+    } else if (firstCall.name === "distinct") {
+      operation = "distinct"
+      const distinctArgs = splitTopLevelArgs(firstCall.args)
+      if (!distinctArgs[0]) {
+        throw new Error("distinct() expects a field name")
+      }
+      if (distinctArgs.length > 2) {
+        throw new Error("distinct() supports field and optional filter arguments")
+      }
+
+      distinctField = parseStringArg(distinctArgs[0], "distinct")
+
+      if (distinctArgs[1]) {
+        const parsed = parseMongoFilter(distinctArgs[1])
         if (parsed.error) {
           throw new Error(`Filter parse error: ${parsed.error}`)
         }
@@ -304,6 +353,7 @@ export function createMongoDriver(): DbDriver {
       operation,
       filter,
       projection,
+      distinctField,
       sort,
       skip,
       limit,
@@ -447,6 +497,14 @@ export function createMongoDriver(): DbDriver {
         const count = await collection.countDocuments(parsed.filter)
         rows = [{ count }]
         totalCount = 1
+      } else if (parsed.operation === "distinct") {
+        if (!parsed.distinctField) {
+          throw new Error("distinct() expects a field name")
+        }
+
+        const values = await collection.distinct(parsed.distinctField, parsed.filter)
+        rows = values.map((value) => ({ [parsed.distinctField!]: value }))
+        totalCount = rows.length
       } else {
         rows = (await collection.aggregate(parsed.pipeline).toArray()) as Record<string, unknown>[]
         totalCount = rows.length
@@ -468,6 +526,8 @@ export function createMongoDriver(): DbDriver {
         query = `db.${parsed.collection}.findOne(${JSON.stringify(parsed.filter)})`
       } else if (parsed.operation === "countDocuments") {
         query = `db.${parsed.collection}.countDocuments(${JSON.stringify(parsed.filter)})`
+      } else if (parsed.operation === "distinct") {
+        query = `db.${parsed.collection}.distinct(${JSON.stringify(parsed.distinctField)}, ${JSON.stringify(parsed.filter)})`
       } else if (parsed.operation === "aggregate") {
         query = `db.${parsed.collection}.aggregate(${JSON.stringify(parsed.pipeline)})`
       }
