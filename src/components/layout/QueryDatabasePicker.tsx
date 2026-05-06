@@ -37,6 +37,12 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
     })
   }, [options, query])
 
+  useEffect(() => {
+    if (selected >= filtered.length) {
+      setSelected(Math.max(0, filtered.length - 1))
+    }
+  }, [filtered.length, selected])
+
   useKeyboard((key) => {
     if (!visible) return
 
@@ -49,18 +55,38 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
       return
     }
 
-    if (key.name === "/") {
-      setSearchMode((prev) => !prev)
+    if (searchMode) {
+      if (isSubmitKey(key)) {
+        setSearchMode(false)
+        return
+      }
+
+      if (key.name === "backspace") {
+        setQuery((prev) => prev.slice(0, -1))
+        setSelected(0)
+        return
+      }
+
+      const inputText = getTextInput(key)
+      if (inputText) {
+        setQuery((prev) => prev + inputText)
+        setSelected(0)
+      }
       return
     }
 
-    if (!searchMode && (key.name === "down" || key.name === "j")) {
+    if (key.name === "/") {
+      setSearchMode(true)
+      return
+    }
+
+    if (key.name === "down" || key.name === "j") {
       if (filtered.length === 0) return
       setSelected((prev) => Math.min(filtered.length - 1, prev + 1))
       return
     }
 
-    if (!searchMode && (key.name === "up" || key.name === "k")) {
+    if (key.name === "up" || key.name === "k") {
       setSelected((prev) => Math.max(0, prev - 1))
       return
     }
@@ -72,22 +98,6 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
         onSelect(option)
       }
       return
-    }
-
-    if (!searchMode) {
-      return
-    }
-
-    if (key.name === "backspace") {
-      setQuery((prev) => prev.slice(0, -1))
-      setSelected(0)
-      return
-    }
-
-    const inputText = getTextInput(key)
-    if (inputText) {
-      setQuery((prev) => prev + inputText)
-      setSelected(0)
     }
   })
 
@@ -126,7 +136,21 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
       onPaste={handlePaste}
     >
       <box height={1} paddingX={1}>
-        {searchMode ? query ? <text fg={colors.textBright}>Search: {query}</text> : <text fg={colors.textBright}>Search: </text> : <text fg={colors.muted}>Press / to search databases</text>}
+        {searchMode ? (
+          <text fg={colors.textBright}>
+            Search: {query}
+            <span fg={colors.accent}>█</span>
+          </text>
+        ) : query ? (
+          <text>
+            <span fg={colors.info}>⌕ </span>
+            <span fg={colors.muted}>"</span>
+            <span fg={colors.success}>{query}</span>
+            <span fg={colors.muted}>"</span>
+          </text>
+        ) : (
+          <text fg={colors.muted}>Press / to search databases</text>
+        )}
       </box>
       <box height={1} paddingX={1}>
         <text fg={colors.border}>{"─".repeat(200)}</text>
@@ -147,7 +171,9 @@ export function QueryDatabasePicker({ visible, width, height, options, onSelect,
         )}
       </box>
       <box height={1} paddingX={1}>
-        <text fg={colors.border}>[Enter] Open query tab  [/] Search  [Esc] {searchMode ? "Exit search" : "Close"}</text>
+        <text fg={colors.border}>
+          [Enter] {searchMode ? "Finish search" : "Open query tab"}  [/] Search  [Esc] {searchMode ? "Exit search" : "Close"}
+        </text>
       </box>
     </CenteredModal>
   )

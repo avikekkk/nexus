@@ -74,6 +74,30 @@ describe("parseMongoFilter", () => {
     expect(parsed.total).toBe(1)
   })
 
+  test("accepts regex literals in filters", () => {
+    const result = parseMongoFilter(`{
+      role: { $in: [ /^\\s*admin\\s*$/i, /^\\s*cre\\s*$/i ] },
+      softdelete: { $ne: true },
+      organization_id: "660269f0cb0a8b001bacf21a"
+    }`)
+
+    expect(result.error).toBeNull()
+    const role = result.filter?.role as Record<string, unknown> | undefined
+    const values = role?.$in as unknown[] | undefined
+    expect(values?.[0] instanceof RegExp).toBe(true)
+    expect(values?.[1] instanceof RegExp).toBe(true)
+    expect((values?.[0] as RegExp).source).toBe("^\\s*admin\\s*$")
+    expect((values?.[0] as RegExp).flags).toBe("i")
+  })
+
+  test("does not treat slashes inside strings as regex literals", () => {
+    const result = parseMongoFilter('{ path: "/api/users", role: /^admin$/i }')
+
+    expect(result.error).toBeNull()
+    expect(result.filter?.path).toBe("/api/users")
+    expect(result.filter?.role instanceof RegExp).toBe(true)
+  })
+
   test("rejects invalid ObjectId shell literal", () => {
     const result = parseMongoFilter('{"_id": ObjectId("invalid") }')
     expect(result.error).not.toBeNull()
