@@ -10,6 +10,12 @@ interface MongoFilterResult {
   error: string | null
 }
 
+interface MongoRegexLiteral {
+  source: string
+  flags: string
+  end: number
+}
+
 interface MySQLQueryResult {
   where: string
   orderBy: string
@@ -29,6 +35,89 @@ function isMongoIdentifierStart(char: string): boolean {
 
 function isMongoIdentifierChar(char: string): boolean {
   return /[A-Za-z0-9_$]/.test(char)
+}
+
+function getPreviousSignificantChar(input: string, index: number): string | null {
+  for (let i = index - 1; i >= 0; i--) {
+    const char = input[i]!
+    if (!/\s/.test(char)) return char
+  }
+  return null
+}
+
+export function canStartMongoRegexLiteral(input: string, index: number): boolean {
+  if (input[index] !== "/") return false
+  const next = input[index + 1]
+  if (next === "/" || next === "*") return false
+
+  const previous = getPreviousSignificantChar(input, index)
+  return previous === null || previous === "(" || previous === "[" || previous === "{" || previous === ":" || previous === ","
+}
+
+export function readMongoRegexLiteral(input: string, start: number): MongoRegexLiteral {
+  let source = ""
+  let i = start + 1
+  let escaped = false
+  let inCharacterClass = false
+
+  while (i < input.length) {
+    const char = input[i]!
+
+    if (escaped) {
+      source += char
+      escaped = false
+      i++
+      continue
+    }
+
+    if (char === "\\") {
+      source += char
+      escaped = true
+      i++
+      continue
+    }
+
+    if (char === "[") {
+      inCharacterClass = true
+      source += char
+      i++
+      continue
+    }
+
+    if (char === "]" && inCharacterClass) {
+      inCharacterClass = false
+      source += char
+      i++
+      continue
+    }
+
+    if (char === "/" && !inCharacterClass) {
+      i++
+      break
+    }
+
+    source += char
+    i++
+  }
+
+  if (i > input.length || input[i - 1] !== "/") {
+    throw new Error("Unclosed regex literal")
+  }
+
+  const flagsStart = i
+  while (i < input.length && /[A-Za-z]/.test(input[i]!)) {
+    i++
+  }
+
+  const flags = input.slice(flagsStart, i)
+  try {
+    new RegExp(source, flags)
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    throw new Error(`Invalid regex literal: ${msg}`)
+  }
+
+  return { source, flags, end: i }
 }
 
 function decodeSingleQuotedEscape(char: string): string {
@@ -162,6 +251,46 @@ function removeMongoTrailingCommas(input: string): string {
       if (next === "}" || next === "]") {
         continue
       }
+    }
+
+    output += char
+  }
+
+  return output
+}
+
+function replaceMongoRegexLiterals(input: string, regexPlaceholders: Array<{ source: string; flags: string }>): string {
+  let output = ""
+  let inString: "'" | '"' | null = null
+  let escaped = false
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i]!
+
+    if (inString) {
+      output += char
+      if (escaped) {
+        escaped = false
+      } else if (char === "\\") {
+        escaped = true
+      } else if (char === inString) {
+        inString = null
+      }
+      continue
+    }
+
+    if (char === '"' || char === "'") {
+      inString = char
+      output += char
+      continue
+    }
+
+    if (canStartMongoRegexLiteral(input, i)) {
+      const literal = readMongoRegexLiteral(input, i)
+      const index = regexPlaceholders.push({ source: literal.source, flags: literal.flags }) - 1
+      output += `{"$__regexp":"${index}"}`
+      i = literal.end - 1
+      continue
     }
 
     output += char
@@ -406,8 +535,10 @@ function replaceMongoDateConstructors(input: string, datePlaceholders: number[])
 export function parseMongoExtendedJson(input: string): unknown {
   const objectIdPlaceholders: string[] = []
   const datePlaceholders: number[] = []
+  const regexPlaceholders: Array<{ source: string; flags: string }> = []
   let normalized = normalizeMongoSingleQuotedStrings(input)
   normalized = replaceMongoDateConstructors(normalized, datePlaceholders)
+  normalized = replaceMongoRegexLiterals(normalized, regexPlaceholders)
   normalized = normalizeMongoObjectKeys(normalized)
   normalized = removeMongoTrailingCommas(normalized)
 
@@ -447,6 +578,16 @@ export function parseMongoExtendedJson(input: string): unknown {
         throw new Error("Invalid Date value")
       }
       return new Date(timestamp)
+    }
+
+    if (keys.length === 1 && keys[0] === "$__regexp") {
+      const raw = record.$__regexp
+      const idx = typeof raw === "string" ? Number.parseInt(raw, 10) : -1
+      const literal = idx >= 0 ? regexPlaceholders[idx] : undefined
+      if (!literal) {
+        throw new Error("Invalid regex literal")
+      }
+      return new RegExp(literal.source, literal.flags)
     }
 
     const next: Record<string, unknown> = {}
@@ -662,4 +803,3 @@ export function sortToOrderBy(sort: Record<string, 1 | -1>): string {
   }
   return parts.join(", ")
 }
-
